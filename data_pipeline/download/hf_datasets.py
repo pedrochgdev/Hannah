@@ -91,29 +91,14 @@ def download_all():
 
         print(f"[DOWN] Descargando {src['name']}...")
         
-        # Remove trust_remote_code and handle dataset loading based on source
+        # Solo añadir trust_remote_code=True a todas las llamadas
         try:
-            if src["id"] == "empathetic_dialogues":
-                # Try alternative dataset for empathetic_dialogues
-                try:
-                    ds = load_dataset(
-                        "SamLowe/empathetic_dialogues",
-                        src.get("subset"),
-                        split=src["split"],
-                    )
-                except:
-                    # Fallback to original without trust_remote_code
-                    ds = load_dataset(
-                        src["id"],
-                        src.get("subset"),
-                        split=src["split"],
-                    )
-            else:
-                ds = load_dataset(
-                    src["id"],
-                    src.get("subset"),
-                    split=src["split"],
-                )
+            ds = load_dataset(
+                src["id"],
+                src.get("subset"),
+                split=src["split"],
+                trust_remote_code=True,  # ÚNICO CAMBIO: añadir esta línea
+            )
         except Exception as e:
             print(f"[ERROR] Could not load {src['name']}: {e}")
             continue
