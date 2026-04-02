@@ -58,8 +58,7 @@ SOURCES = [
         "subset":   None,
         "split":    "train",
         "cols":     ["text"],
-        #"max_rows": 2_000_000,
-        "max_rows": 1,
+        "max_rows": 8_000_000,
     },
     {
         "name":   "wikipedia",
@@ -74,8 +73,7 @@ SOURCES = [
         "subset":   "en",
         "split":    "train",
         "cols":     ["text"],
-        "max_rows": 1_000_000,
-        #"max_rows": 1,
+        "max_rows": 9_000_000,
     },
 ]
 
