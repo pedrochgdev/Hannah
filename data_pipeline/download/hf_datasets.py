@@ -1,3 +1,7 @@
+import os
+os.environ["HF_HOME"] = "Y:/.cache/huggingface"
+os.environ["HF_DATASETS_CACHE"] = "Y:/.cache/huggingface/datasets"
+
 from datasets import load_dataset
 import json, pathlib
 
@@ -32,18 +36,18 @@ SOURCES = [
         "cols":   ["personality", "utterances"],
     },
     {
-        "name":   "dailydialog",
-        "id":     "frankdarkluo/DailyDialog",
+        "name":   "soda",
+        "id":     "allenai/soda",
         "subset": None,
         "split":  "train",
-        "cols":   ["dialog"],          
+        "cols":   ["narrative"],
     },
     {
-        "name":   "blendedskill",
-        "id":     "ParlAI/blended_skill_talk",
+        "name":   "openassistant",
+        "id":     "OpenAssistant/oasst1",
         "subset": None,
         "split":  "train",
-        "cols":   ["context", "free_turker_utterance", "guided_turker_utterance"],
+        "cols":   ["text"], 
     },
     {
         "name":   "tinystories",
@@ -116,7 +120,7 @@ def download_source(src: dict):
     with open(out_path, "w", encoding="utf-8") as f:
         for sample in ds:
             text = flatten_text(sample, src["cols"])
-            if len(text.strip()) > 30:
+            if len(text.strip()) > 5:  # Solo evitar líneas completamente vacías
                 f.write(json.dumps({"text": text, "source": src["name"]}) + "\n")
                 written += 1
 
