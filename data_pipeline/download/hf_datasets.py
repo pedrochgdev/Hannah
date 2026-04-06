@@ -1,7 +1,3 @@
-import os
-os.environ["HF_HOME"] = "Y:/.cache/huggingface"
-os.environ["HF_DATASETS_CACHE"] = "Y:/.cache/huggingface/datasets"
-
 from datasets import load_dataset
 import json, pathlib
 
