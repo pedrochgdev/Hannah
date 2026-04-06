@@ -7,10 +7,18 @@ import json, pathlib, re
 THRESHOLD  = 0.85
 NUM_PERM   = 128   # permutaciones MinHash — más = más preciso pero más lento
 
-def shingle(text: str, k: int = 5) -> set:
-    """Genera k-shingles de caracteres."""
+def shingle(text: str, k: int = 5):
+    """Genera k-shingles de caracteres optimizado para no desbordar la RAM."""
     text = re.sub(r"\s+", " ", text.lower())
-    return {text[i:i+k] for i in range(len(text) - k + 1)}
+    
+    # Utilizamos un set local pero devolvemos los valores con un GENERADOR (yield).
+    # Esto envía los fragmentos a MinHash uno por uno, consumiendo casi 0 RAM extra.
+    seen = set()
+    for i in range(len(text) - k + 1):
+        chunk = text[i:i+k]
+        if chunk not in seen:
+            seen.add(chunk)
+            yield chunk
 
 def deduplicate(input_path: pathlib.Path, output_path: pathlib.Path):
     lsh   = MinHashLSH(threshold=THRESHOLD, num_perm=NUM_PERM)

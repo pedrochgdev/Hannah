@@ -4,7 +4,6 @@ OUTPUT = pathlib.Path("raw/gutenberg")
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
 # IDs en Project Gutenberg — selección manual de romance/drama en inglés
-# Formato: (id, autor, título)
 BOOK_IDS = [
     # CLÁSICOS
     (1342,  "Jane Austen",        "Pride and Prejudice"),
@@ -51,9 +50,13 @@ BOOK_IDS = [
 
 MIRROR = "https://www.gutenberg.org/cache/epub/{id}/pg{id}.txt"
 
+# Cabeceras para simular un navegador real
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+
 def clean_gutenberg_text(raw: str) -> str:
     """Elimina headers, footers y notas de PG."""
-    # Cortar en los marcadores estándar de Project Gutenberg
     start_markers = [
         "*** START OF THE PROJECT GUTENBERG",
         "***START OF THE PROJECT GUTENBERG",
@@ -76,30 +79,64 @@ def clean_gutenberg_text(raw: str) -> str:
             end = idx
             break
     text = raw[start:end]
-    # Colapsar líneas en blanco múltiples
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 def download_all():
     out_path = OUTPUT / "gutenberg_corpus.jsonl"
-    with open(out_path, "w", encoding="utf-8") as f:
+    
+    # Leer los que ya se descargaron para no repetirlos
+    downloaded_titles = set()
+    if out_path.exists():
+        with open(out_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    data = json.loads(line)
+                    downloaded_titles.add(data["title"])
+                except json.JSONDecodeError:
+                    pass
+
+    # Usamos "a" (append) en lugar de "w" para no sobreescribir lo que ya existe
+    with open(out_path, "a", encoding="utf-8") as f:
         for book_id, author, title in BOOK_IDS:
+            if title in downloaded_titles:
+                print(f"[SKIP] {title} (ya está descargado)")
+                continue
+
             url = MIRROR.format(id=book_id)
-            try:
-                r = requests.get(url, timeout=30)
-                r.raise_for_status()
-                text = clean_gutenberg_text(r.text)
-                if len(text) > 5000:   # descartar si quedó muy corto tras limpieza
-                    f.write(json.dumps({
-                        "text":   text,
-                        "source": "gutenberg",
-                        "author": author,
-                        "title":  title,
-                    }) + "\n")
-                    print(f"[OK]   {title} ({len(text):,} chars)")
-                time.sleep(1)          # ser amable con el servidor de PG
-            except Exception as e:
-                print(f"[ERR]  {title}: {e}")
+            success = False
+            max_retries = 3
+            
+            for attempt in range(1, max_retries + 1):
+                try:
+                    # Timeout extendido a 60s y uso de cabeceras
+                    r = requests.get(url, headers=HEADERS, timeout=60)
+                    r.raise_for_status()
+                    
+                    text = clean_gutenberg_text(r.text)
+                    if len(text) > 5000:
+                        f.write(json.dumps({
+                            "text":   text,
+                            "source": "gutenberg",
+                            "author": author,
+                            "title":  title,
+                        }) + "\n")
+                        print(f"[OK]   {title} ({len(text):,} chars)")
+                        success = True
+                    else:
+                        print(f"[WARN] {title} texto muy corto tras limpieza.")
+                        success = True # Marcamos como éxito para no reintentar un libro vacío
+
+                    time.sleep(2) # Pausa amigable
+                    break # Salir del bucle de reintentos si funcionó
+                    
+                except Exception as e:
+                    print(f"[ERR]  {title} (Intento {attempt}/{max_retries}): {e}")
+                    if attempt < max_retries:
+                        time.sleep(5) # Esperar 5 segundos antes de reintentar
+            
+            if not success:
+                print(f"[FAIL] No se pudo descargar {title} después de {max_retries} intentos.")
 
 if __name__ == "__main__":
     download_all()
