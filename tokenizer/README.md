@@ -1,17 +1,17 @@
-# Entrenamiento completo (30-90 min según tamaño del corpus)
+# Entrenamiento completo - Ejecutar
 
 python tokenizer/train.py \
  --corpus corpus_final.jsonl \
  --output tokenizer/hannah_tok
 
-# Prueba rápida con 500k oraciones (~5 min) para verificar que funciona
+# Prueba rápida con 500k oraciones - Ya Testeado
 
 python tokenizer/train.py \
  --corpus corpus_final.jsonl \
  --output tokenizer/hannah_tok_test \
  --max-lines 500000
 
-# Validación
+# Validación - Ejecutar 
 
 python tokenizer/validate.py --tok tokenizer/hannah_tok
 
