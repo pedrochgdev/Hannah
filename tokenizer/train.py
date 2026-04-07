@@ -142,7 +142,6 @@ def train_sentencepiece(tmp_corpus: pathlib.Path, output_dir: pathlib.Path):
 def export_huggingface_format(output_dir: pathlib.Path):
     """
     Paso 2: convertir el modelo SentencePiece al formato HuggingFace tokenizers.
-    Esto permite usar el tokenizador directamente con AutoTokenizer.from_pretrained().
     """
     print(f"\n[3/3] Exportando a formato HuggingFace...")
 
@@ -152,21 +151,29 @@ def export_huggingface_format(output_dir: pathlib.Path):
         merges  = None,   # SentencePiece BPE no usa archivo de merges separado
     )
 
-    # Post-processor: añadir <bos> al inicio y <eos> al final automáticamente
-    tok.post_processor = TemplateProcessing(
-        single   = "<bos> $A <eos>",
-        pair     = "<bos> $A <eos> $B:1 <eos>:1",
-        special_tokens = [
-            ("<bos>", tok.token_to_id("<bos>")),
-            ("<eos>", tok.token_to_id("<eos>")),
-        ],
-    )
+    # Obtener IDs de los tokens especiales
+    bos_id = tok.token_to_id("<bos>")
+    eos_id = tok.token_to_id("<eos>")
+    
+    if bos_id is None or eos_id is None:
+        print(f"   ⚠️  Tokens especiales no encontrados, omitiendo post_processor")
+    else:
+        # Post-processor: añadir <bos> al inicio y <eos> al final automáticamente
+        # FORMATO CORREGIDO
+        tok.post_processor = TemplateProcessing(
+            single="<bos> $A <eos>",
+            pair="<bos> $A <eos> <bos>:1 $B:1 <eos>:1",
+            special_tokens=[
+                ("<bos>", "<bos>"),  # Cambiado: (token_str, token_str) en lugar de (token_str, id)
+                ("<eos>", "<eos>"),
+            ],
+        )
 
-    # Guardar en formato HuggingFace (genera tokenizer.json + tokenizer_config.json)
+    # Guardar en formato HuggingFace
     tok.save_model(str(output_dir))
     tok.save(str(output_dir / "tokenizer.json"))
 
-    # tokenizer_config.json — necesario para AutoTokenizer.from_pretrained()
+    # tokenizer_config.json
     config = {
         "tokenizer_class":   "PreTrainedTokenizerFast",
         "model_max_length":  1024,
