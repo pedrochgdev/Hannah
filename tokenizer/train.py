@@ -1,18 +1,18 @@
 """
 Entrena un tokenizador BPE de 32k vocab sobre corpus_final.jsonl.
-Usa sentencepiece como backend y exporta en formato HuggingFace
-para compatibilidad directa con el training loop de PyTorch.
-
-Uso:
-    python tokenizer/train.py --corpus corpus_final.jsonl --output tokenizer/hannah_tok
+Usa sentencepiece como backend y exporta en formato HuggingFace.
+¡Versión optimizada para múltiples núcleos!
 """
 
-import argparse, pathlib, json, itertools, sentencepiece as spm
-from tokenizers import SentencePieceBPETokenizer
-from tokenizers.processors import TemplateProcessing
+import argparse
+import pathlib
+import json
+import re
+import os
+import multiprocessing as mp
+import sentencepiece as spm
 
 # ── Tokens especiales del proyecto ───────────────────────────────────────────
-# Deben coincidir exactamente con el chat template de model.py
 SPECIAL_TOKENS = [
     "<pad>",    # padding
     "<unk>",    # token desconocido
@@ -32,53 +32,8 @@ VOCAB_SIZE    = 32_000
 CHARACTER_COVERAGE = 0.9995   # cubre prácticamente todo el inglés
 MAX_SENTENCEPIECE_LENGTH = 16  # tokens más largos se parten
 
-def extract_text_iterator(corpus_path: pathlib.Path, max_lines: int = None):
-    """
-    Genera líneas de texto desde el .jsonl.
-    SentencePiece necesita un iterador de strings, no el archivo completo.
-    """
-    count = 0
-    with open(corpus_path, encoding="utf-8") as f:
-        for line in f:
-            try:
-                text = json.loads(line)["text"]
-                if text and len(text.strip()) > 20:
-                    yield text.strip()
-                    count += 1
-                    if max_lines and count >= max_lines:
-                        return
-            except (json.JSONDecodeError, KeyError):
-                continue
-
-def write_temp_corpus(corpus_path: pathlib.Path,
-                      tmp_path: pathlib.Path,
-                      max_lines: int = None):
-    """
-    SentencePiece necesita un archivo de texto plano (una oración por línea).
-    Escribe un archivo temporal desde el .jsonl.
-    """
-    print(f"[1/3] Extrayendo texto desde {corpus_path.name}...")
-    written = 0
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        for text in extract_text_iterator(corpus_path, max_lines):
-            # Partir en oraciones cortas mejora la calidad del BPE
-            # SentencePiece funciona mejor con líneas de longitud media (~100-300 chars)
-            for chunk in _split_into_sentences(text):
-                if chunk.strip():
-                    f.write(chunk.strip() + "\n")
-                    written += 1
-
-    size_mb = tmp_path.stat().st_size / 1e6
-    print(f"    {written:,} oraciones extraídas → {size_mb:.1f} MB")
-    return written
-
 def _split_into_sentences(text: str, max_len: int = 500) -> list[str]:
-    """
-    Parte texto largo en fragmentos manejables.
-    No es un sentence splitter perfecto, pero es suficiente para BPE.
-    """
-    import re
-    # Partir en puntuación final
+    """Parte texto largo en fragmentos manejables usando Regex."""
     sentences = re.split(r"(?<=[.!?])\s+", text)
     result = []
     current = ""
@@ -93,131 +48,165 @@ def _split_into_sentences(text: str, max_len: int = 500) -> list[str]:
         result.append(current)
     return result
 
-def train_sentencepiece(tmp_corpus: pathlib.Path, output_dir: pathlib.Path):
+def process_chunk(args):
     """
-    Paso 1: entrenar con SentencePiece (más estable para vocab grande).
-    Genera tokenizer.model y tokenizer.vocab.
+    Función para el Multiprocessing.
+    Cada núcleo lee un pedazo del JSONL y extrae las oraciones a su propio archivo temporal.
+    """
+    file_path, start_byte, end_byte, tmp_out_path = args
+    written = 0
+    
+    with open(file_path, 'rb') as f, open(tmp_out_path, 'w', encoding='utf-8') as out_f:
+        if start_byte != 0:
+            f.seek(start_byte - 1)
+            if f.read(1) != b'\n':
+                f.readline()
+                
+        while True:
+            if f.tell() >= end_byte: break
+            line = f.readline()
+            if not line: break
+            
+            try:
+                # Decodificamos y leemos el JSON
+                text = json.loads(line.decode('utf-8', errors='ignore')).get("text", "")
+                if text and len(text.strip()) > 20:
+                    for chunk in _split_into_sentences(text.strip()):
+                        if chunk.strip():
+                            out_f.write(chunk.strip() + "\n")
+                            written += 1
+            except (json.JSONDecodeError, KeyError):
+                continue
+                
+    return written, tmp_out_path
+
+def write_temp_corpus_parallel(corpus_path: pathlib.Path, output_dir: pathlib.Path):
+    """
+    Divide el corpus de 30GB usando los hilos del CPU para extraer el texto en paralelo.
+    """
+    print(f"[1/3] Extrayendo texto en paralelo desde {corpus_path.name}...")
+    
+    file_size = os.path.getsize(corpus_path)
+    # Dejamos 2 hilos libres para que el PC no se congele
+    num_cores = max(1, mp.cpu_count() - 2) 
+    chunk_size = file_size // num_cores
+    
+    chunks = []
+    for i in range(num_cores):
+        start = i * chunk_size
+        end = start + chunk_size if i < num_cores - 1 else file_size
+        tmp_out = str(output_dir / f"_tmp_corpus_{i}.txt")
+        chunks.append((str(corpus_path), start, end, tmp_out))
+        
+    print(f"    ⚡ Usando {num_cores} núcleos para procesar los datos...")
+    
+    with mp.Pool(num_cores) as pool:
+        results = pool.map(process_chunk, chunks)
+        
+    total_written = sum(r[0] for r in results)
+    tmp_files = [r[1] for r in results]
+    
+    print(f"    ✅ {total_written:,} oraciones extraídas en {len(tmp_files)} archivos temporales.")
+    return tmp_files
+
+def train_sentencepiece(tmp_files: list[str], output_dir: pathlib.Path):
+    """
+    Paso 1: entrenar con SentencePiece.
     """
     print(f"\n[2/3] Entrenando SentencePiece BPE ({VOCAB_SIZE:,} vocab)...")
-    print(f"      Esto puede tardar 30-90 minutos según el tamaño del corpus.")
-
     model_prefix = str(output_dir / "tokenizer")
+    
+    # SentencePiece permite pasarle una lista de archivos separados por comas
+    input_files_str = ",".join(tmp_files)
 
     spm.SentencePieceTrainer.train(
-        input            = str(tmp_corpus),
-        model_prefix     = model_prefix,
-        model_type       = "bpe",               # Byte Pair Encoding
-        vocab_size       = VOCAB_SIZE,
-        character_coverage = CHARACTER_COVERAGE,
+        input                    = input_files_str,
+        model_prefix             = model_prefix,
+        model_type               = "bpe",
+        vocab_size               = VOCAB_SIZE,
+        character_coverage       = CHARACTER_COVERAGE,
         max_sentencepiece_length = MAX_SENTENCEPIECE_LENGTH,
+        max_sentence_length      = 32768,
 
-        # Tokens especiales — el orden importa, define los IDs
-        pad_id           = 0,   # <pad>
-        unk_id           = 1,   # <unk>
-        bos_id           = 2,   # <bos>
-        eos_id           = 3,   # <eos>
-        pad_piece        = "<pad>",
-        unk_piece        = "<unk>",
-        bos_piece        = "<bos>",
-        eos_piece        = "<eos>",
-
-        # Tokens especiales adicionales (IDs 4-11)
+        # Tokens especiales
+        pad_id = 0, unk_id = 1, bos_id = 2, eos_id = 3,
+        pad_piece = "<pad>", unk_piece = "<unk>", bos_piece = "<bos>", eos_piece = "<eos>",
         user_defined_symbols = ",".join(SPECIAL_TOKENS[4:]),
 
         # Opciones de calidad
-        split_digits     = True,    # "123" → "1", "2", "3" (mejor para números)
-        byte_fallback    = True,    # bytes como fallback para chars raros
-        normalization_rule_name = "nmt_nfkc",  # normalización unicode estándar
+        split_digits = True,
+        byte_fallback = True,
+        normalization_rule_name = "nmt_nfkc",
 
         # Rendimiento
-        num_threads      = 8,       # ajustar según los cores disponibles
+        num_threads = max(1, mp.cpu_count() - 2),
         shuffle_input_sentence = True,
-        input_sentence_size = 5_000_000,  # máximo de oraciones usadas para entrenar
-                                           # el BPE (5M es más que suficiente)
-        # Logging
+        input_sentence_size = 5_000_000, 
         train_extremely_large_corpus = True,
     )
     print(f"    Modelo guardado: {model_prefix}.model")
 
 def export_huggingface_format(output_dir: pathlib.Path):
-    """
-    Paso 2: convertir el modelo SentencePiece al formato HuggingFace tokenizers.
-    """
-    print(f"\n[3/3] Exportando a formato HuggingFace...")
+    from transformers import AutoTokenizer
+    from transformers.convert_slow_tokenizer import convert_slow_tokenizer
+    from transformers import LlamaTokenizer
+    import json
 
-    # Cargar con la librería tokenizers de HF
-    tok = SentencePieceBPETokenizer(
-        vocab   = str(output_dir / "tokenizer.vocab"),
-        merges  = None,   # SentencePiece BPE no usa archivo de merges separado
+    model_path = str(output_dir / "tokenizer.model")
+
+    # Cargamos el tokenizador lento
+    tok_slow = LlamaTokenizer(
+        vocab_file=model_path,
+        bos_token="<bos>",
+        eos_token="<eos>",
+        unk_token="<unk>",
+        pad_token="<pad>",
+        legacy=False,
     )
+    tok_slow.add_special_tokens({
+        'additional_special_tokens': SPECIAL_TOKENS[4:]
+    })
 
-    # Obtener IDs de los tokens especiales
-    bos_id = tok.token_to_id("<bos>")
-    eos_id = tok.token_to_id("<eos>")
+    # Convertimos directamente al backend rápido (conserva las merges)
+    fast_tokenizer = convert_slow_tokenizer(tok_slow)
+
+    # Guardamos el tokenizer.json manualmente
+    fast_tokenizer.save(str(output_dir / "tokenizer.json"))
+
+    # Guardamos el resto de la config con el tokenizador lento como base
+    tok_slow.save_pretrained(str(output_dir))
     
-    if bos_id is None or eos_id is None:
-        print(f"   ⚠️  Tokens especiales no encontrados, omitiendo post_processor")
-    else:
-        # Post-processor: añadir <bos> al inicio y <eos> al final automáticamente
-        # FORMATO CORREGIDO
-        tok.post_processor = TemplateProcessing(
-            single="<bos> $A <eos>",
-            pair="<bos> $A <eos> <bos>:1 $B:1 <eos>:1",
-            special_tokens=[
-                ("<bos>", "<bos>"),  # Cambiado: (token_str, token_str) en lugar de (token_str, id)
-                ("<eos>", "<eos>"),
-            ],
-        )
+    print(f"    Exportado exitosamente en: {output_dir}/")
 
-    # Guardar en formato HuggingFace
-    tok.save_model(str(output_dir))
-    tok.save(str(output_dir / "tokenizer.json"))
-
-    # tokenizer_config.json
-    config = {
-        "tokenizer_class":   "PreTrainedTokenizerFast",
-        "model_max_length":  1024,
-        "padding_side":      "right",
-        "bos_token":         "<bos>",
-        "eos_token":         "<eos>",
-        "unk_token":         "<unk>",
-        "pad_token":         "<pad>",
-        "additional_special_tokens": SPECIAL_TOKENS[4:],
-    }
-    with open(output_dir / "tokenizer_config.json", "w") as f:
-        json.dump(config, f, indent=2)
-
-    print(f"    Exportado en: {output_dir}/")
-
-def run(corpus_path: pathlib.Path, output_dir: pathlib.Path,
-        max_lines: int = None, keep_tmp: bool = False):
-
+def run(corpus_path: pathlib.Path, output_dir: pathlib.Path, keep_tmp: bool = False):
     output_dir.mkdir(parents=True, exist_ok=True)
-    tmp_corpus = output_dir / "_tmp_corpus.txt"
+    tmp_files = []
 
     try:
-        write_temp_corpus(corpus_path, tmp_corpus, max_lines)
-        train_sentencepiece(tmp_corpus, output_dir)
+        tmp_files = write_temp_corpus_parallel(corpus_path, output_dir)
+        train_sentencepiece(tmp_files, output_dir)
         export_huggingface_format(output_dir)
     finally:
-        if not keep_tmp and tmp_corpus.exists():
-            tmp_corpus.unlink()
-            print(f"\n    (corpus temporal eliminado)")
+        if not keep_tmp:
+            for tmp in tmp_files:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            print(f"\n    (Archivos temporales eliminados)")
 
     print(f"\n{'='*50}")
     print(f"  Tokenizador listo en: {output_dir}")
     print(f"  Cargar con:")
     print(f"    from transformers import AutoTokenizer")
-    print(f"    tok = AutoTokenizer.from_pretrained('{output_dir}')")
+    print(f"    tok = AutoTokenizer.from_pretrained(r'{output_dir}')")
     print(f"{'='*50}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--corpus",    type=pathlib.Path, default=pathlib.Path("corpus_final.jsonl"))
-    parser.add_argument("--output",   type=pathlib.Path, default=pathlib.Path("tokenizer/hannah_tok"))
-    parser.add_argument("--max-lines",type=int,          default=None,
-                        help="Limitar oraciones para prueba rápida (ej: 500000)")
-    parser.add_argument("--keep-tmp", action="store_true",
-                        help="No borrar el corpus temporal después de entrenar")
+    parser.add_argument("--corpus", type=pathlib.Path, default=pathlib.Path("data_pipeline/corpus_final.jsonl"))
+    parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("tokenizer/hannah_tok"))
+    parser.add_argument("--keep-tmp", action="store_true", help="No borrar el corpus temporal después de entrenar")
     args = parser.parse_args()
-    run(args.corpus, args.output, args.max_lines, args.keep_tmp)
+    
+    # Evitar problemas de Multiprocessing en Windows
+    mp.freeze_support()
+    run(args.corpus, args.output, args.keep_tmp)
