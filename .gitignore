@@ -1,0 +1,9 @@
+# Ignorar todos los archivos JSON y JSONL
+*.json
+*.jsonl
+
+# Ignorar la carpeta de caché de Python en cualquier ruta
+__pycache__/
+
+# Ignorar la carpeta raw
+data_pipeline/raw/
