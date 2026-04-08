@@ -1,8 +1,3 @@
-"""
-GPT-style decoder-only transformer.
-Implementación limpia y comentada para el informe académico.
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

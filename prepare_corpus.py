@@ -6,7 +6,7 @@ from transformers import AutoTokenizer
 from tqdm import tqdm
 
 tok = AutoTokenizer.from_pretrained("tokenizer/hannah_tok")
-corpus_path = pathlib.Path("data_pipeline/corpus_final.jsonl")
+corpus_path = pathlib.Path("corpus_merged.jsonl")
 output_dir  = pathlib.Path("nanoGPT/data/hannah")
 output_dir.mkdir(parents=True, exist_ok=True)
 
