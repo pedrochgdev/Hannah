@@ -1,11 +1,8 @@
 """
 build_dialogue_corpus.py
 ========================
-Descarga, limpia y agrega datasets de diálogo en inglés en primera persona
-al archivo `corpus_final.jsonl`, respetando el formato:
-    {"text": "...", "source": "..."}
 
-DATASETS INCLUIDOS (verificados como descargables, todos públicos sin login):
+DATASETS INCLUIDOS:
   1. allenai/soda            ~1.5 GB  | CC-BY 4.0      | público
   2. allenai/WildChat-4.8M   ~11 GB   | ODC-BY         | público
   3. allenai/prosocial-dialog ~500 MB | Apache 2.0     | público
@@ -21,12 +18,12 @@ USO:
     HF_TOKEN=hf_xxxx python build_dialogue_corpus.py
 
 VARIABLES DE ENTORNO:
-    HF_TOKEN          Token de Hugging Face (opcional, habilita datasets gated)
-    OUTPUT_FILE       Ruta al archivo destino (default: corpus_final.jsonl)
-    TARGET_GB         GB objetivo de datos nuevos a agregar (default: 20)
-    WILDCHAT_4_8M     Si "1", incluye WildChat-4.8M (~11 GB, solo inglés)
-    MAX_WORKERS       Hilos para escritura (default: 1, escritura secuencial segura)
-    SKIP_LANGDETECT   Si "1", omite filtro de idioma (más rápido, menos preciso)
+    HF_TOKEN          Token de Hugging Face
+    OUTPUT_FILE       Ruta al archivo destino 
+    TARGET_GB         GB objetivo de datos nuevos a agregar 
+    WILDCHAT_4_8M     Si "1", incluye WildChat-4.8M 
+    MAX_WORKERS       Hilos para escritura 
+    SKIP_LANGDETECT   Si "1", omite filtro de idioma 
 """
 
 import os
