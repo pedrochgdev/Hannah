@@ -2,7 +2,7 @@
 
 > Un pipeline completo de entrenamiento de un modelo de lenguaje personalizado (Hannah 360M) con pretraining, SFT (Supervised Fine-Tuning) y DPO (Direct Preference Optimization).
 
-## 📋 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 /HannahNLP
@@ -60,7 +60,7 @@
 └── README.md                      # Este archivo
 ```
 
-## 🚀 Instalación
+## Instalación
 
 ```bash
 pip install -r requirements.txt
@@ -75,9 +75,9 @@ pip install -r requirements.txt
 
 ---
 
-## 📊 Pipeline de Entrenamiento Completo
+##  Pipeline de Entrenamiento Completo
 
-### **Fase 0: Preparar Tokenizador** (OPCIONAL)
+### **Fase 0: Preparar Tokenizador** 
 
 El tokenizador ya viene entrenado en `src/tokenizer/hannah_tok/`
 
@@ -92,7 +92,7 @@ python src/tokenizer/validate.py --tokenizer src/tokenizer/hannah_tok
 
 ---
 
-### **Fase 1: Construir Corpus Base** (~1-2 horas)
+### **Fase 1: Construir Corpus Base** 
 
 Combina, limpia y deduplica datos crudos.
 
@@ -181,7 +181,7 @@ python scripts/tests/test_sft_hannah.py
 
 ---
 
-## 📦 Estructura de Datos
+##  Estructura de Datos
 
 Antes de ejecutar el pipeline:
 
@@ -205,7 +205,7 @@ Salidas del pipeline:
 
 ---
 
-## 🔧 Configuração
+##  Configuração
 
 ### Hiperparámetros
 
@@ -233,7 +233,7 @@ Si se queda sin memoria:
 
 ---
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 | Error                                           | Solución                           |
 | ----------------------------------------------- | ---------------------------------- |
@@ -243,7 +243,7 @@ Si se queda sin memoria:
 
 ---
 
-## 💾 Limpiar Espacio
+##  Limpiar Espacio
 
 ```bash
 # Ver tamaño
@@ -257,4 +257,3 @@ rm -rf data/processed/corpus_deduped.jsonl
 ---
 
 **Última actualización:** Abril 2026  
-**Estado:** ✅ Pipeline actualizado y reorganizado
