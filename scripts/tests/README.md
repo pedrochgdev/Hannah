@@ -2,7 +2,7 @@
 
 Scripts para probar y validar los modelos entrenados.
 
-## 📋 Estructura
+## Estructura
 
 ```
 scripts/tests/
@@ -11,7 +11,7 @@ scripts/tests/
 └── tokenizer/              # Tests del tokenizador
 ```
 
-## 🧪 Tests del Modelo
+## Tests del Modelo
 
 ### test_hannah.py - Modelo Pretrainado Base
 
@@ -67,7 +67,7 @@ python scripts/tests/test_sft_hannah.py
 
 ---
 
-## 🧩 Tokenizer Tests
+## Tokenizer Tests
 
 ### Ubicación
 
@@ -81,7 +81,7 @@ Este script crea un corpus de prueba para validar que el tokenizador funciona.
 
 ---
 
-## 📊 Validaciones Automatizadas
+## Validaciones Automatizadas
 
 Los scripts de test validan:
 
@@ -107,7 +107,7 @@ Los scripts de test validan:
 
 ---
 
-## 🔧 Personalizar Tests
+## Personalizar Tests
 
 ### Cambiar Checkpoint
 
@@ -135,7 +135,7 @@ max_new_tokens = 100  # Cambiar a lo que necesites
 
 ---
 
-## 🚦 Estados de Exit
+## Estados de Exit
 
 Los scripts retornan:
 
@@ -146,7 +146,7 @@ Los scripts retornan:
 
 ---
 
-## 📋 Checklist Pre-Test
+## Checklist Pre-Test
 
 Antes de correr tests, verifica:
 
@@ -158,7 +158,7 @@ Antes de correr tests, verifica:
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 | Error                                                        | Solución                                     |
 | ------------------------------------------------------------ | -------------------------------------------- |
@@ -169,7 +169,7 @@ Antes de correr tests, verifica:
 
 ---
 
-## 🔄 Workflow Típico
+## Workflow Típico
 
 1. Entrenar modelo base
 
