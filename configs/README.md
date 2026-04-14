@@ -2,14 +2,14 @@
 
 Archivos YAML/JSON con hiperparámetros y configuración del modelo.
 
-## 📋 Estructura
+## Estructura
 
 ```
 configs/
 └── hana_360m.yaml            # ★ Configuración principal del modelo Hannah 360M
 ```
 
-## 🎯 hana_360m.yaml
+## hana_360m.yaml
 
 Configuración completa del modelo OLMo para Hannah.
 
@@ -63,7 +63,7 @@ LEARNING_RATE = config['training']['learning_rate']
 
 ---
 
-## ⚙️ Personalización
+## Personalización
 
 ### Para un modelo más pequeño
 
@@ -102,7 +102,7 @@ training:
 
 ---
 
-## 📊 Parámetros Clave
+## Parámetros Clave
 
 ### Model Architecture
 
@@ -127,7 +127,7 @@ training:
 
 ---
 
-## 🔧 Configurar por Proyecto
+## Configurar por Proyecto
 
 Si tienes múltiples proyectos:
 
@@ -161,7 +161,7 @@ config = {**base_config, **sft_overrides}
 
 ---
 
-## 📝 Best Practices
+## Best Practices
 
 1. **Versionar configs:** Guarda historico de configs usadas
 2. **Documentar cambios:** Agregar comentarios en YAML
@@ -171,7 +171,7 @@ config = {**base_config, **sft_overrides}
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 | Error                                  | Causa                 | Solución                  |
 | -------------------------------------- | --------------------- | ------------------------- |
@@ -181,7 +181,7 @@ config = {**base_config, **sft_overrides}
 
 ---
 
-## 📌 Referencia Rápida
+## Referencia Rápida
 
 ### Cambios Comunes
 
