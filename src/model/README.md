@@ -2,7 +2,7 @@
 
 Definición de la arquitectura OLMo utilizada para Hannah.
 
-## 📋 Estructura
+## Estructura
 
 ```
 src/model/
@@ -11,7 +11,7 @@ src/model/
 
 ---
 
-## 🎯 Arquitectura: OLMo
+## Arquitectura: OLMo
 
 Hannah utiliza la arquitectura **OLMo** (Open Language Model from AllenAI).
 
@@ -40,7 +40,7 @@ Dropout:            0.0 (dropout rate)
 
 ---
 
-## 📐 Configuración
+## Configuración
 
 La configuración del modelo está en `configs/hana_360m.yaml`:
 
@@ -56,7 +56,7 @@ sequence_length: 1024
 
 ---
 
-## 🔗 Imports
+## Imports
 
 En los scripts de entrenamiento, la arquitectura se importa así:
 
@@ -74,7 +74,7 @@ model = config.build()
 
 ---
 
-## ⚙️ Características
+## Características
 
 ### Attention Mechanism
 
@@ -103,7 +103,7 @@ Linear(d_model → 8/3 * d_model)
 
 ---
 
-## 📊 Comparación con Otros Modelos
+## Comparación con Otros Modelos
 
 | Modelo               | Parámetros | Layers | Heads | Seq Len |
 | -------------------- | ---------- | ------ | ----- | ------- |
@@ -114,7 +114,7 @@ Linear(d_model → 8/3 * d_model)
 
 ---
 
-## 🚀 Extensión / Customización
+## Extensión / Customización
 
 ### Cambiar el Tamaño del Modelo
 
@@ -144,7 +144,7 @@ Si quieres cambiar de OLMo a otra (Llama, Qwen, etc.):
 
 ---
 
-## 📚 Referencias
+## Referencias
 
 - OLMo Paper: https://arxiv.org/abs/2404.01657
 - AllenAI Research: https://allenai.org
@@ -152,7 +152,7 @@ Si quieres cambiar de OLMo a otra (Llama, Qwen, etc.):
 
 ---
 
-## 📝 Notas
+## Notas
 
 - La arquitectura está fija por compatibilidad con checkpoints existentes
 - Para cambios mayores, requiere reentrenamiento
