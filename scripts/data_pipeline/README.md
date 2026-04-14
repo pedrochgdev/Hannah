@@ -25,7 +25,7 @@ scripts/data_pipeline/
 
 ## Flujo Completo
 
-### 1️⃣ Fase 1: Descargar Datos (Opcional)
+###  Fase 1: Descargar Datos (Opcional)
 
 Si necesitas expandir el corpus:
 
@@ -44,7 +44,7 @@ python scripts/data_pipeline/debug_datasets.py
 
 ---
 
-### 2️⃣ Fase 2: Limpiar y Combinar Corpus
+###  Fase 2: Limpiar y Combinar Corpus
 
 El script principal que hace todo:
 
@@ -60,7 +60,7 @@ python build_corpus.py
 3. Deduplica con MinHash (Jaccard > 85%)
 4. Escribe resultado en `data/processed/corpus_final.jsonl`
 
-**⚠️ Requisitos previos:**
+** Requisitos previos:**
 
 - Archivos JSON/JSONL en `data/raw/`
 - Al menos 100 MB de datos
@@ -71,7 +71,7 @@ python build_corpus.py
 
 ---
 
-### 3️⃣ Fase 3: Tokenizar para Pretraining
+###  Fase 3: Tokenizar para Pretraining
 
 Convierte el corpus en binarios para entrenamiento:
 
@@ -166,7 +166,7 @@ export TOKENIZERS_PARALLELISM=false
 
 ---
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 | Problema                          | Solución                                     |
 | --------------------------------- | -------------------------------------------- |
@@ -177,7 +177,7 @@ export TOKENIZERS_PARALLELISM=false
 
 ---
 
-## ℹ️ Notas
+##  Notas
 
 - El tokenizador usa `AutoTokenizer.from_pretrained()` (HuggingFace format)
 - La deduplicación usa MinHash con threshold de Jaccard > 85%
