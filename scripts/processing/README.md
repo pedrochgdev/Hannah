@@ -2,7 +2,7 @@
 
 Scripts para construir datasets SFT (Supervised Fine-Tuning) y DPO (Direct Preference Optimization).
 
-## 📋 Estructura
+## Estructura
 
 ```
 scripts/processing/
@@ -10,7 +10,7 @@ scripts/processing/
 └── build_dpo_corpus.py    # Construir dataset DPO con pares de preferencias
 ```
 
-## 🎯 SFT Corpus
+## SFT Corpus
 
 ### build_sft_corpus.py
 
@@ -62,7 +62,7 @@ Edítalo en `build_sft_corpus.py` si necesitas cambiar el comportamiento.
 
 ---
 
-## 🎲 DPO Dataset
+## DPO Dataset
 
 ### build_dpo_corpus.py
 
@@ -98,7 +98,7 @@ python scripts/processing/build_dpo_corpus.py
 
 ---
 
-## 🔄 Flujo Típico
+## Flujo Típico
 
 1. **build_sft_corpus.py** (datos curados → corpus conversacional)
 
@@ -130,7 +130,7 @@ python scripts/processing/build_dpo_corpus.py
 
 ---
 
-## ⚙️ Personalización
+## Personalización
 
 ### Cambiar System Prompt
 
@@ -167,7 +167,7 @@ MINOR_HARD_FILTERS = [
 
 ---
 
-## 📊 Estadísticas Esperadas
+## Estadísticas Esperadas
 
 **SFT Corpus típico:**
 
@@ -181,7 +181,7 @@ MINOR_HARD_FILTERS = [
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 | Error                             | Causa                        | Solución                         |
 | --------------------------------- | ---------------------------- | -------------------------------- |
@@ -191,7 +191,7 @@ MINOR_HARD_FILTERS = [
 
 ---
 
-## 📝 Formato de Entrada Esperado
+## Formato de Entrada Esperado
 
 ### hannah_curated.jsonl
 
