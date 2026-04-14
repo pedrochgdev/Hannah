@@ -169,7 +169,7 @@ python src/training/train_dpo_hannah.py
 
 ---
 
-## 🧪 Testing y Validación
+##  Testing y Validación
 
 ```bash
 # Test del modelo base
