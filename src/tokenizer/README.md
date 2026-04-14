@@ -2,7 +2,7 @@
 
 Módulo para entrenar, validar y usar el tokenizador Hannah.
 
-## 📋 Estructura
+## Estructura
 
 ```
 src/tokenizer/
@@ -20,7 +20,7 @@ src/tokenizer/
 
 ---
 
-## 🎯 Tokenizador Pretrainado
+## Tokenizador Pretrainado
 
 El proyecto ya incluye un tokenizador entrenado: **hannah_tok**
 
@@ -53,7 +53,7 @@ input_ids = tokenizer.encode("Hola", add_special_tokens=True)
 
 ---
 
-## 📝 Entrenar Tokenizador Nuevo
+## Entrenar Tokenizador Nuevo
 
 Si necesitas entrenar un tokenizador personalizado desde un corpus:
 
@@ -87,7 +87,7 @@ src/tokenizer/hannah_tok_new/
 
 ---
 
-## ✅ Validar Tokenizador
+## Validar Tokenizador
 
 Para validar que el tokenizador funciona correctamente:
 
@@ -106,7 +106,7 @@ python src/tokenizer/validate.py \
 
 ---
 
-## 🧪 Tests del Tokenizador
+## Tests del Tokenizador
 
 ```bash
 python src/tokenizer/test/test_corpus.py
@@ -114,7 +114,7 @@ python src/tokenizer/test/test_corpus.py
 
 ---
 
-## 📊 Tokens Especiales
+## Tokens Especiales
 
 | Token   | Uso                       |
 | ------- | ------------------------- |
