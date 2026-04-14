@@ -102,6 +102,6 @@ def validate(tok_path: pathlib.Path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--tok", type=pathlib.Path,
-                        default=pathlib.Path("tokenizer/hannah_tok"))
+                        default=pathlib.Path("src/tokenizer/hannah_tok"))
     args = parser.parse_args()
     validate(args.tok)

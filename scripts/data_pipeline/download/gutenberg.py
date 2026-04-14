@@ -1,6 +1,6 @@
 import requests, json, time, pathlib, re
 
-OUTPUT = pathlib.Path("raw/gutenberg")
+OUTPUT = pathlib.Path("data/raw/gutenberg")
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
 # IDs en Project Gutenberg — selección manual de romance/drama en inglés

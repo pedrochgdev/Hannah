@@ -1,7 +1,7 @@
 from datasets import load_dataset
 import json, pathlib
 
-OUTPUT = pathlib.Path("raw/hf")
+OUTPUT = pathlib.Path("data/raw/hf")
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
 # IDs verificados contra HuggingFace Hub - abril 2026

@@ -1,13 +1,18 @@
 import json, pathlib, collections
 import faulthandler    # <-- AÑADIR
 faulthandler.enable()  # <-- AÑADIR
+
+# Actualizar sys.path para importar clean utils
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+
 from clean.filters import clean
 from clean.dedup   import deduplicate
 
-RAW_DIR    = pathlib.Path("raw")
-MERGED     = pathlib.Path("corpus_merged.jsonl")
-DEDUPED    = pathlib.Path("corpus_deduped.jsonl")
-FINAL      = pathlib.Path("corpus_final.jsonl")
+RAW_DIR    = pathlib.Path("data/raw")
+MERGED     = pathlib.Path("data/processed/corpus_merged.jsonl")
+DEDUPED    = pathlib.Path("data/processed/corpus_deduped.jsonl")
+FINAL      = pathlib.Path("data/processed/corpus_final.jsonl")
 
 # Cuántos tokens aproximados tiene un archivo .jsonl de N bytes
 # Rule of thumb: 1 token ≈ 4 bytes de texto inglés

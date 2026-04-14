@@ -203,7 +203,7 @@ def run(corpus_path: pathlib.Path, output_dir: pathlib.Path, keep_tmp: bool = Fa
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--corpus", type=pathlib.Path, default=pathlib.Path("data_pipeline/corpus_final.jsonl"))
-    parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("tokenizer/hannah_tok"))
+    parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("src/tokenizer/hannah_tok"))
     parser.add_argument("--keep-tmp", action="store_true", help="No borrar el corpus temporal después de entrenar")
     args = parser.parse_args()
     

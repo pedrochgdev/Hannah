@@ -1,9 +1,97 @@
-# Ignorar todos los archivos JSON y JSONL
-*.json
+# ============================================================================
+# DATA & MODELS - Ignorar archivos grandes
+# ============================================================================
+
+# Carpetas de datos (local solamente, nunca commit)
+data/
+checkpoints/
+
+# Archivos de datos específicos
 *.jsonl
+*.json
+*.bin
+*.safetensors
 
-# Ignorar la carpeta de caché de Python en cualquier ruta
+# ============================================================================
+# PYTHON - Cache y compilado
+# ============================================================================
+
+# Caché de Python
 __pycache__/
+*.py[cod]
+*$py.class
 
-# Ignorar la carpeta raw
-data_pipeline/raw/
+# Distribuciones
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Entornos virtuales
+venv/
+env/
+ENV/
+.venv
+
+# ============================================================================
+# IDE & TOOLS
+# ============================================================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ============================================================================
+# SISTEMA OPERATIVO
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+.directory
+
+# ============================================================================
+# TEMPORALES
+# ============================================================================
+
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+.~*
+
+# ============================================================================
+# SPECIFICO DEL PROYECTO
+# ============================================================================
+
+# Archivos de logs
+logs/
+*.log
+
+# Modelos descargados temporalmente
+/src/tokenizer/hannah_tok_temp/
+
+# Archivos intermedios del pipeline
+corpus_merged.jsonl
+corpus_deduped.jsonl
