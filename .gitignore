@@ -5,12 +5,15 @@
 # Carpetas de datos (local solamente, nunca commit)
 data/
 checkpoints/
+OLMo-core/
 
 # Archivos de datos específicos
 *.jsonl
 *.json
 *.bin
 *.safetensors
+*.pt
+.env
 
 # ============================================================================
 # PYTHON - Cache y compilado
