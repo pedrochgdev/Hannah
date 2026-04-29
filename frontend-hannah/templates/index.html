@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hannah - Chat</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+</head>
+<body>
+    <div class="chat-container" id="chatContainer">
+
+        <!-- Header -->
+        <div class="chat-header">
+            <div class="header-left">
+                <div class="avatar">
+                    <span class="material-icons-round">favorite</span>
+                </div>
+                <div class="header-info">
+                    <h1>Hannah</h1>
+                    <span class="status">
+                        <span class="status-dot"></span>
+                        Online
+                    </span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn-icon" id="btnHistory" title="History">
+                    <span class="material-icons-round">history</span>
+                    <span class="btn-label">History</span>
+                </button>
+                <button class="btn-icon" id="btnModelInfo" title="Model Info">
+                    <span class="material-icons-round">info_outline</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Welcome Screen -->
+        <div class="welcome-screen" id="welcomeScreen">
+            <div class="welcome-content">
+                <div class="welcome-avatar">
+                    <span class="material-icons-round">favorite</span>
+                </div>
+                <h2>Hey! How are you today?</h2>
+                <p class="welcome-subtitle">Pick a topic or type whatever you want</p>
+
+                <div class="quick-actions">
+                    <button class="quick-action" data-message="Hey Hannah, tell me about yourself">
+                        <span class="material-icons-round qa-icon">chat_bubble_outline</span>
+                        <div class="qa-text">
+                            <strong>Get to know each other</strong>
+                            <span>Ask Hannah about herself.</span>
+                        </div>
+                    </button>
+                    <button class="quick-action" data-message="Tell me something interesting that happened to you today">
+                        <span class="material-icons-round qa-icon">auto_awesome</span>
+                        <div class="qa-text">
+                            <strong>Tell me something</strong>
+                            <span>Let Hannah share something fun.</span>
+                        </div>
+                    </button>
+                    <button class="quick-action" data-message="I'm feeling a bit bored, what do you recommend?">
+                        <span class="material-icons-round qa-icon">tips_and_updates</span>
+                        <div class="qa-text">
+                            <strong>I need ideas</strong>
+                            <span>Ask her for recommendations or advice.</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Messages Area -->
+        <div class="chat-messages" id="chatMessages">
+        </div>
+
+        <!-- Typing Indicator -->
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-avatar">
+                <span class="material-icons-round">favorite</span>
+            </div>
+            <div class="typing-bubble">
+                <div class="typing-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="chat-input-area">
+            <div class="input-wrapper">
+                <textarea
+                    id="messageInput"
+                    placeholder="Type your message here..."
+                    rows="1"
+                    maxlength="1000"
+                ></textarea>
+                <button class="btn-send" id="btnSend" disabled>
+                    <span class="material-icons-round">send</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- History Panel -->
+        <div class="history-panel" id="historyPanel">
+            <div class="history-header">
+                <button class="btn-icon" id="btnCloseHistory">
+                    <span class="material-icons-round">arrow_back</span>
+                </button>
+                <h2>Chat History</h2>
+                <button class="btn-icon" id="btnClearHistory" title="Clear history">
+                    <span class="material-icons-round">delete_outline</span>
+                </button>
+            </div>
+            <div class="history-actions">
+                <button class="btn-new-chat" id="btnNewChat">
+                    <span class="material-icons-round">add_comment</span>
+                    New Chat
+                </button>
+            </div>
+            <div class="history-list" id="historyList">
+            </div>
+            <div class="history-empty" id="historyEmpty">
+                <div class="history-empty-icon">
+                    <span class="material-icons-round">forum</span>
+                </div>
+                <p>No saved conversations</p>
+                <span class="history-empty-hint">Start chatting with Hannah and your conversations will appear here</span>
+            </div>
+        </div>
+
+        <!-- Model Info Modal -->
+        <div class="modal-overlay" id="modelInfoModal">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3>Model Info</h3>
+                    <button class="btn-icon" id="btnCloseModal">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+                <div class="modal-body" id="modelInfoBody">
+                    <p>Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/chat.js?v=2"></script>
+</body>
+</html>

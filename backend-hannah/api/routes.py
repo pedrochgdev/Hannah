@@ -25,7 +25,8 @@ Additional routes:
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter, HTTPException, Response
+import os
+from fastapi import APIRouter, HTTPException
 
 from api.schemas import (
     ChatRequest,
@@ -37,6 +38,7 @@ from config import settings
 from core.model_selector import ModelSelector, ModelSignal
 from core.semantic_cache import SemanticCache
 from core.token_handler import TokenHandler
+from rag.rag_component import RAGComponent
 
 router = APIRouter()
 
@@ -47,7 +49,8 @@ router = APIRouter()
 _token_handler  = TokenHandler()
 _semantic_cache = SemanticCache()
 _model_selector = ModelSelector()
-
+_RAG_DB = os.path.join(os.path.dirname(__file__), "..", "rag", "hannah_knowledge")
+_rag = RAGComponent(db_path=_RAG_DB)
 
 # ── Main chat endpoint ────────────────────────────────────────────────
 
@@ -82,11 +85,22 @@ async def chat(request: ChatRequest) -> ChatResponse:
         context=context,
     )
 
+    # Step 3.5 — RAG retrieval ← NUEVO
+    rag_mode = "extended" if signal == ModelSignal.SLOW else "simplified"
+    rag_result = _rag.retrieve(request.prompt, mode=rag_mode)
+    rag_context = rag_result["formatted_context"]
+
     # Step 4 — Call the selected downstream model
-    response_text = await _call_model(signal, context)
+    response_text = await _call_model(signal, context, rag_context)
 
     # Step 5 — Cache the response for future similar queries
     _semantic_cache.store(request.prompt, response_text)
+
+    # RAG integration note (for when RAG is added):
+    # Inject retrieved context INSIDE the [SYS] block, not in [MEMORY] blocks.
+    # Hannah 360M was not trained to read [MEMORY] content — empirical tests
+    # show the model ignores it. The [SYS] block is where it reliably attends.
+    # The Slow Model (Llama) is instruction-tuned and can use [MEMORY] natively.
 
     # Step 6 — Record this turn in session history
     _token_handler.record_turn(
@@ -127,15 +141,14 @@ async def get_session(session_id: str) -> SessionHistoryResponse:
     return SessionHistoryResponse(session_id=session_id, turns=history)
 
 
-@router.delete("/session/{session_id}")
-async def clear_session(session_id: str):
+@router.delete("/session/{session_id}", status_code=200)
+async def clear_session(session_id: str) -> dict:
     _token_handler.clear_session(session_id)
-    return Response(status_code=204)
-
+    return {}
 
 # ── Internal helper ───────────────────────────────────────────────────
 
-async def _call_model(signal: ModelSignal, context: dict) -> str:
+async def _call_model(signal: ModelSignal, context: dict, rag_context: str = "") -> str:
     """
     Forward the context to the appropriate downstream model endpoint.
 
@@ -155,8 +168,14 @@ async def _call_model(signal: ModelSignal, context: dict) -> str:
         timeout = settings.slow_model_timeout
 
     payload = {
-        "prompt":  context["prompt"],
-        "history": context["history"],
+        "prompt":             context["prompt"],
+        "history":            context["history"],
+        "rag_context":        rag_context,
+        "max_new_tokens":     settings.max_new_tokens,
+        "temperature":        settings.temperature,
+        "top_k":              settings.top_k,
+        "top_p":              settings.top_p,
+        "repetition_penalty": settings.repetition_penalty,
     }
 
     try:

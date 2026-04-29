@@ -27,7 +27,7 @@ CHECKPOINT = os.path.join(BASE_DIR, "model", "hannah_personality_final.pt")
 TOK_PATH   = os.path.join(BASE_DIR, "tokenizer", "hannah_tok")
 
 device = torch.device("cuda")
-tok    = AutoTokenizer.from_pretrained(TOK_PATH)
+tok = AutoTokenizer.from_pretrained(TOK_PATH, use_fast=False)
 
 config = TransformerConfig.olmo3_7B(vocab_size=VOCAB_SIZE, attn_backend=AttentionBackendName.torch)
 config.d_model  = D_MODEL
@@ -61,6 +61,7 @@ app = FastAPI(title="Hannah Model API")
 class GenerateRequest(BaseModel):
     prompt: str
     history: List[Dict[str, Any]] = [] # El TokenHandler enviará el historial aquí
+    rag_context: str = ""
 
 class GenerateResponse(BaseModel):
     response: str
@@ -78,8 +79,12 @@ async def generate_text(req: GenerateRequest):
             formatted_history.append((user_msg_temp, msg.get("content")))
             user_msg_temp = None
 
+    sys_block = SYSTEM
+    if req.rag_context:
+        sys_block += f" {req.rag_context}"
+
     # 2. Construir el prompt
-    prompt_text = f"[SYS] {SYSTEM} [/SYS]"
+    prompt_text = f"[SYS] {sys_block} [/SYS]"
     for usr, ass in formatted_history:
         prompt_text += f"[USR] {usr} [/USR][ASS] {ass} [/ASS]"
     prompt_text += f"[USR] {req.prompt} [/USR][ASS]"
