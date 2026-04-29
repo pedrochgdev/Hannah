@@ -3,6 +3,7 @@
 # ============================================================================
 
 # Carpetas de datos (local solamente, nunca commit)
+# pequeño cambio
 data/
 checkpoints/
 OLMo-core/
