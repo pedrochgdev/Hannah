@@ -79,13 +79,18 @@ class CacheStore(ABC):
 
 class InMemoryStore(CacheStore):
     """
-    Simple dict-based store.
-    TTL is enforced lazily on get_all() — expired entries are filtered out.
+    Dict-based store with TTL and FIFO eviction.
+
+    - TTL is enforced lazily on get_all() — expired entries are filtered out.
+    - FIFO eviction: when the store reaches max_entries, the oldest key
+      (insertion order, guaranteed by Python 3.7+ dicts) is removed before
+      the new entry is inserted.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_entries: int | None = None) -> None:
         self._store: dict[str, tuple[CacheEntry, float]] = {}
         # tuple is (entry, expires_at); expires_at == 0 means never expires
+        self._max_entries = max_entries or settings.cache_max_entries
 
     def get_all(self) -> list[CacheEntry]:
         now = time.time()
@@ -94,11 +99,15 @@ class InMemoryStore(CacheStore):
             for k, (e, exp) in self._store.items()
             if exp == 0 or exp > now
         }
-        # Prune expired entries
         self._store = valid
         return [e for e, _ in valid.values()]
 
     def put(self, key: str, entry: CacheEntry, ttl: int) -> None:
+        # FIFO eviction: drop the oldest key when at capacity
+        if len(self._store) >= self._max_entries and key not in self._store:
+            oldest_key = next(iter(self._store))
+            self._store.pop(oldest_key)
+
         expires_at = (time.time() + ttl) if ttl > 0 else 0
         self._store[key] = (entry, expires_at)
 

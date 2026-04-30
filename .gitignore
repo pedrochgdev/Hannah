@@ -3,9 +3,12 @@
 # ============================================================================
 
 # Carpetas de datos (local solamente, nunca commit)
+# pequeño cambio
 data/
 checkpoints/
 OLMo-core/
+backend-hannah/models/
+backend-hannah/hannah_vectordb/
 
 # Archivos de datos específicos
 *.jsonl
