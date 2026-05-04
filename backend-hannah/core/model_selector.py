@@ -50,7 +50,10 @@ COMPLEXITY_KEYWORDS = [
     "grief", "suicidal", "self-harm", "hallucination", "paranoid",
     "dissociat", "concentration", "memory", "fatigue", "burnout",
     "addiction", "relapse", "chronic", "disorder", "medication",
-    "therapy", "psychiatrist", "psychologist",
+    "therapy", "psychiatrist", "psychologist", "lonely", "alone", 
+    "nobody", "giving up", "disappear", "don't want to", 
+    "can't anymore", "everything is wrong", "falling apart", 
+    "don't know what to do",
     # Spanish equivalents (corpus may contain Spanish)
     "ansiedad", "depresion", "insomnio", "estres", "panico",
 ]

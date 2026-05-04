@@ -26,19 +26,27 @@ from __future__ import annotations
 
 import httpx
 import os
-from fastapi import APIRouter, HTTPException
+import io
+import tempfile
+import soundfile as sf
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 
 from api.schemas import (
     ChatRequest,
     ChatResponse,
     HealthResponse,
     SessionHistoryResponse,
+    TTSRequest,
 )
 from config import settings
 from core.model_selector import ModelSelector, ModelSignal
 from core.semantic_cache import SemanticCache
 from core.token_handler import TokenHandler
 from rag.rag_component import RAGComponent
+
+from faster_whisper import WhisperModel
+from kokoro import KPipeline
 
 router = APIRouter()
 
@@ -51,6 +59,70 @@ _semantic_cache = SemanticCache()
 _model_selector = ModelSelector()
 _RAG_DB = os.path.join(os.path.dirname(__file__), "..", "rag", "hannah_knowledge")
 _rag = RAGComponent(db_path=_RAG_DB)
+
+print("Cargando Faster-Whisper...")
+_whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+
+print("Cargando Kokoro TTS...")
+_tts_pipeline = KPipeline(lang_code='a')
+_tts_voice = 'af_heart'
+
+# ── Audio Endpoints (NUEVOS) ──────────────────────────────────────────
+
+@router.post("/transcribe")
+async def transcribe_audio(audio: UploadFile = File(...)):
+    """
+    Recibe el audio del frontend, lo guarda temporalmente y lo transcribe con Faster Whisper.
+    """
+    try:
+        # 1. Guardar el archivo subido en un archivo temporal
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
+            tmp.write(await audio.read())
+            tmp_path = tmp.name
+
+        # 2. Transcribir
+        segments, info = _whisper_model.transcribe(tmp_path, beam_size=5)
+
+        # 3. Unir los segmentos de texto
+        text = " ".join([segment.text for segment in segments])
+
+        # 4. Limpiar el archivo temporal
+        os.remove(tmp_path)
+
+        return {"text": text.strip()}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en transcripción: {str(e)}")
+
+@router.post("/tts")
+async def generate_tts(request: TTSRequest):
+    """
+    Recibe texto y devuelve un flujo de audio WAV generado por Kokoro.
+    """
+    try:
+        # Generar el audio con Kokoro
+        # KPipeline devuelve un generador, tomamos el primer resultado
+        generator = _tts_pipeline(request.text, voice=_tts_voice, speed=1.0, split_pattern=r'\n+')
+
+        all_audio = []
+        sample_rate = 24000
+
+        for _, _, audio_data in generator:
+            all_audio.extend(audio_data)
+
+        if not all_audio:
+            raise HTTPException(status_code=500, detail="No se pudo generar audio.")
+
+        # Escribir a un buffer en memoria en formato WAV
+        buffer = io.BytesIO()
+        sf.write(buffer, all_audio, sample_rate, format='WAV')
+        buffer.seek(0)
+
+        # Devolver como StreamingResponse
+        return StreamingResponse(buffer, media_type="audio/wav")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en TTS: {str(e)}")
 
 # ── Main chat endpoint ────────────────────────────────────────────────
 

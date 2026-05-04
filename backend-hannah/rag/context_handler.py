@@ -86,13 +86,28 @@ class ContextHandler:
     # ─── CONFIGURACIÓN POR MODO ───
     MODE_CONFIG = {
         "simplified": {
-            "max_chunks": 3,          # Máximo 3 chunks (Sección 2.5: "2-3 chunks")
+            "max_chunks": 1,          # SOLO 1 chunk — el más relevante
             "min_chunks": 1,          # Mínimo 1 chunk (siempre algo de contexto)
-            "max_context_tokens": 200, # ~200 tokens según arquitectura
-            "max_context_chars": 800,  # ~4 chars por token en español promedio
+            "max_context_tokens": 75,  # ~75 tokens para no desbordar ventana de 512
+            "max_context_chars": 300,  # ~4 chars por token en inglés promedio
             "use_reranking": False,    # Sin reranking (Sección 2.5: "sin HyDE, sin QE")
             "include_metadata": False, # Contexto limpio, sin etiquetas de fuente
             "separator": " ",          # Un solo bloque continuo (para Hannah 360M)
+            # ─── JUSTIFICACIÓN DEL CAMBIO ───
+            # Hannah 360M fue alineada con secuencias de 512 tokens.
+            # Presupuesto total del prompt Fast:
+            #   System   ≈ 100 tokens
+            #   Memory   ≈  75 tokens  ← REDUCIDO (antes 200, desbordaba)
+            #   User     ≈  50 tokens
+            #   Historia ≈ 150 tokens
+            #   Generac. ≈ 100 tokens (espacio para que Hannah responda)
+            #   ─────────────────────
+            #   TOTAL    ≈ 475 tokens  → cabe en 512 con margen
+            #
+            # Con 200 tokens de memory el total era ~550, excediendo 512
+            # y degradando la calidad de la personalidad del modelo.
+            # 1 chunk puntual es suficiente: Hannah no puede procesar
+            # múltiples hechos simultáneamente (360M params).
         },
         "extended": {
             "max_chunks": 10,          # Hasta 10 chunks (Sección 2.5: "5-10 chunks")
@@ -300,3 +315,65 @@ class ContextHandler:
             "num_chunks": 0,
             "approx_tokens": 0
         }
+
+
+# ============================================================================
+# PRUEBA RÁPIDA
+# ============================================================================
+# Ejecutar: python context_handler.py
+# Resultado esperado:
+#   Simplified: 2-3 chunks, ~200 tokens, [MEMORY]...[/MEMORY]
+#   Extended: 4 chunks, más tokens, con [Fuente: X] y separadores
+# ============================================================================
+if __name__ == "__main__":
+    print("=" * 60)
+    print("  Test: ContextHandler")
+    print("=" * 60)
+
+    handler = ContextHandler()
+
+    # Simular resultados de ChromaDB (4 documentos encontrados)
+    mock_results = {
+        "documents": [[
+            "Hannah es un modelo transformer de 360 millones de parámetros, basado en OLMo3.",
+            "El entrenamiento de Hannah pasó por tres fases: pretraining, SFT y DPO.",
+            "El Slow Model usa Qwen2.5-14B-Instruct con SFT aplicado por el equipo.",
+            "El RAG recupera información de una base vectorial ChromaDB con embeddings MiniLM."
+        ]],
+        "metadatas": [[
+            {"source": "arquitectura.pdf"},
+            {"source": "tecnica.pdf"},
+            {"source": "lab_grupal.pdf"},
+            {"source": "docs_rag.md"}
+        ]],
+        "distances": [[0.15, 0.25, 0.35, 0.40]]
+    }
+
+    # Test 1: Modo Simplified (Fast Hannah)
+    print("\n--- Test 1: MODO SIMPLIFIED (FAST) ---")
+    result = handler.process(mock_results, "¿Qué es Hannah?", mode="simplified")
+    print(f"  Chunks usados: {result['num_chunks']}")
+    print(f"  Tokens aprox:  ~{result['approx_tokens']}")
+    print(f"  Contexto:\n  {result['formatted_context']}")
+    assert result['num_chunks'] <= 3, "Simplified: máximo 3 chunks"
+    assert "[MEMORY]" in result['formatted_context'], "Debe tener [MEMORY]"
+    assert "[/MEMORY]" in result['formatted_context'], "Debe tener [/MEMORY]"
+    assert "[Fuente:" not in result['formatted_context'], "Simplified NO incluye metadata"
+
+    # Test 2: Modo Extended (Slow Qwen)
+    print("\n--- Test 2: MODO EXTENDED (SLOW) ---")
+    result2 = handler.process(mock_results, "¿Qué es Hannah?", mode="extended")
+    print(f"  Chunks usados: {result2['num_chunks']}")
+    print(f"  Tokens aprox:  ~{result2['approx_tokens']}")
+    print(f"  Contexto:\n  {result2['formatted_context'][:300]}...")
+    assert result2['num_chunks'] >= 1, "Extended: al menos 1 chunk"
+    assert "[Fuente:" in result2['formatted_context'], "Extended DEBE incluir metadata"
+
+    # Test 3: Sin resultados
+    print("\n--- Test 3: SIN RESULTADOS ---")
+    empty = handler.process({"documents": [[]], "metadatas": [[]], "distances": [[]]},
+                            "algo random", mode="simplified")
+    print(f"  Contexto vacío: {empty['formatted_context']}")
+    assert empty['formatted_context'] == "[MEMORY][/MEMORY]"
+
+    print("\nTodos los tests pasaron.")

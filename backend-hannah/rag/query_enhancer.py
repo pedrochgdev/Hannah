@@ -8,172 +8,155 @@
 # ============================================================================
 # Descripción:
 # ========================
-# Enhances user queries before searching in ChromaDB.
-# The problem is that user questions and documents in the DB
-# may be written in very different ways.
+# Mejora las queries del usuario antes de buscar en ChromaDB.
+# El problema es que la pregunta del usuario y los documentos en la BD
+# pueden estar escritos de formas muy diferentes.
 #
-# EXAMPLE OF THE PROBLEM:
-#   User query: "How many parameters does Hannah have?"
-#   Document in DB: "Hannah 360M uses the OLMo architecture from AllenAI,
-#                   instantiated with reduced dimension parameters to 360M."
-#   → Query says "how many parameters" but document says "reduced dimension to 360M"
-#     A pure word match would fail.
-# SOLUTION: Generate MULTIPLE query variants to cover more ways
-# of saying the same thing and find better matches in the DB.
+# EJEMPLO DEL PROBLEMA:
+#   Query del usuario: "¿Cuántos parámetros tiene Hannah?"
+#   Documento en BD:   "Hannah 360M utiliza la arquitectura OLMo de AllenAI,
+#                       instanciada con parámetros de dimensión reducidos a 360M."
+#   → La query dice "cuántos parámetros" pero el documento dice "dimensión
+#     reducidos a 360M". Un match puramente por palabras fallaría.
+# SOLUCIÓN: Generar MÚLTIPLES variantes de la query para cubrir más
+# formas de decir lo mismo y encontrar mejores matches en la BD.
 #
-# Techniques implemented:
+# Técnicas implementadas:
 # =======================
-# 1. QUERY EXPANSION (Multi-Query) — Extended mode only
-#    Generates variants of the original question:
-#    - Question → Statement: "What is NLP?" → "NLP is a field"
-#    - Keyword extraction: "How do I train DPO?" → "train DPO"
-#    - Contextualization: "What is NLP?" → "Hannah chatbot what is NLP"
+# 1. QUERY EXPANSION (Multi-Query) — Solo modo Extended
+#    Genera variantes de la pregunta original:
+#    - Pregunta → Afirmación: "¿Qué es NLP?" → "NLP"
+#    - Extracción de keywords: "¿Cómo entreno el DPO?" → "entrenar DPO"
+#    - Contextualización: "¿Qué es NLP?" → "Hannah chatbot ¿Qué es NLP?"
 #
-# 2. HyDE (Hypothetical Document Embeddings) — Extended mode only
-#    WHAT IS HyDE?
-#    Instead of searching with the question, we generate a "hypothetical document"
-#    that would ANSWER the question, and search with that text.
-#    The embedding of a hypothetical document is closer to the embedding
-#    of real documents than the embedding of a short question.
-#    EXAMPLE:
-#      Query: "What is NLP?"
-#      HyDE generates: "Natural Language Processing (NLP) refers to...
-#                       NLP is a technique that enables computer systems..."
-#      → The embedding of this paragraph is closer to documents about NLP
-#        than the embedding of the question "What is NLP?" (4 words)
+# 2. HyDE (Hypothetical Document Embeddings) — Solo modo Extended
+#    ¿QUÉ ES HyDE?
+#    En vez de buscar con la pregunta, generamos un "documento hipotético"
+#    que RESPONDERÍA la pregunta, y buscamos con ese texto.
+#    El embedding de un documento hipotético está más cerca del embedding
+#    de los documentos reales que el embedding de una pregunta corta.
+#    EJEMPLO:
+#      Query: "¿Qué es NLP?"
+#      HyDE genera: "El procesamiento de lenguaje natural (NLP) se refiere
+#                    a NLP en el contexto de IA. NLP es una técnica que
+#                    permite a los sistemas computacionales..."
+#      → El embedding de este párrafo está más cerca de documentos sobre NLP
+#        que el embedding de la pregunta "¿Qué es NLP?" (4 palabras)
+#    NUESTRA IMPLEMENTACIÓN:
+#    HyDE original usa un LLM para generar el documento hipotético.
+#    Nosotros usamos TEMPLATES porque:
+#    a) Nuestro RAG es standalone (no hay LLM corriendo)
+#    b) Los templates capturan ~70% del beneficio sin costo computacional
+#    c) Se pueden mejorar después cuando se integre con Hannah/Qwen
 #
-# MODES OF OPERATION:
+# MODOS DE OPERACIÓN:
 # =============================================================================
-# - Simplified (Fast): Basic cleaning only. No HyDE or expansion.
-#   → Reason: Fast Model (Hannah 360M) needs minimal latency (<100ms)
+# - Simplified (Fast): Solo limpieza básica. Sin HyDE ni expansión.
+#   → Razón: el Fast Model (Hannah 360M) necesita latencia mínima (<100ms)
 #
-# - Extended (Slow): Query Expansion + HyDE + subsequent reranking.
-#   → Reason: Slow Model (Qwen2.5-14B-Instruct) can wait for better context
+# - Extended (Slow): Query Expansion + HyDE + reranking posterior.
+#   → Razón: el Slow Model (Qwen2.5-14B-Instruct) puede esperar por mejor contexto
 #
-# DEPENDENCIES:
+# DEPENDENCIAS:
 # =============
-# Only uses standard library (re). No pip install required.
+# Solo usa la librería estándar de Python (re). No requiere pip install.
 # ============================================================================
 import re
 
 class QueryEnhancer:
     """
-    Enhances queries according to RAG operation mode.
-    Usage:
+    Mejora queries según el modo de operación del RAG.
+    Uso:
         enhancer = QueryEnhancer()
-        result = enhancer.enhance("What is Hannah?", mode="simplified")
-        # result["search_queries"] = ["What is Hannah"]  (only 1 cleaned query)
-        result = enhancer.enhance("What is Hannah?", mode="extended")
+        result = enhancer.enhance("¿Qué es Hannah?", mode="simplified")
+        # result["search_queries"] = ["Qué es Hannah"]  (solo 1 query limpia)
+        result = enhancer.enhance("¿Qué es Hannah?", mode="extended")
         # result["search_queries"] = [
-        #     "What is Hannah",                          (original cleaned)
-        #     "Hannah is an AI model",                   (statement)
-        #     "Hannah",                                  (keywords)
-        #     "Hannah chatbot what is Hannah",           (contextual)
-        #     "The concept of Hannah refers to..."       (HyDE)
+        #     "Qué es Hannah",                          (original limpia)
+        #     "Hannah",                                  (afirmación)
+        #     "hannah",                                  (keywords)
+        #     "Hannah chatbot Qué es Hannah",            (contextual)
+        #     "El concepto de hannah se refiere a..."    (HyDE)
         # ]
     """
-    # ─── TEMPLATES FOR HyDE ───
-    # Each template generates a "hypothetical document" based on question type.
-    # {topic} is replaced with keywords from the query.
+    # ─── TEMPLATES PARA HyDE ───
+    # Cada template genera un "documento hipotético" según el tipo de pregunta.
+    # El {topic} se reemplaza con las palabras clave de la query.
     HYDE_TEMPLATES = {
         "definition": (
-            "The concept of {topic} refers to {topic} in the context of artificial "
-            "intelligence and natural language processing. {topic} is a technique that "
-            "enables computer systems to understand and generate human language."
+            "El concepto de {topic} se refiere a {topic} en el contexto de inteligencia "
+            "artificial y procesamiento de lenguaje natural. {topic} es una técnica que "
+            "permite a los sistemas computacionales comprender y generar lenguaje humano."
         ),
         "how_to": (
-            "To perform {topic}, the following steps are followed: first, prepare the data, "
-            "then configure the model, train it with appropriate parameters, "
-            "and finally evaluate the system's performance."
+            "Para {topic}, se siguen los siguientes pasos: primero se preparan los datos, "
+            "luego se configura el modelo, se entrena con los parámetros adecuados, "
+            "y finalmente se evalúa el rendimiento del sistema."
         ),
         "comparison": (
-            "{topic} has several distinguishing characteristics when compared with "
-            "alternatives. The advantages include better performance and efficiency, "
-            "while limitations may include resource requirements."
+            "{topic} tiene varias características distintivas cuando se compara con "
+            "alternativas. Las ventajas incluyen mejor rendimiento y eficiencia, "
+            "mientras que las limitaciones pueden incluir requisitos de recursos."
         ),
         "factual": (
-            "According to documentation and official sources, {topic}. This information "
-            "has been verified and documented in the context of the Hannah project, "
-            "a conversational chatbot with 360 million parameters."
+            "Según la documentación y fuentes oficiales, {topic}. Esta información "
+            "ha sido verificada y documentada en el contexto del proyecto Hannah, "
+            "un chatbot conversacional de 360 millones de parámetros."
         ),
         "default": (
-            "{topic}. This topic is related to natural language processing "
-            "and conversational language models. In the context of "
-            "Hannah, this applies to improving response quality."
+            "{topic}. Este tema está relacionado con el procesamiento de lenguaje "
+            "natural y los modelos de lenguaje conversacionales. En el contexto de "
+            "Hannah, esto se aplica para mejorar la calidad de las respuestas."
         )
     }
 
-    # ─── PATTERNS FOR CLASSIFYING QUESTIONS ───
-    # Regex that detect question type to choose the correct HyDE template
+    # ─── PATRONES PARA CLASIFICAR PREGUNTAS ───
+    # Regex que detectan el tipo de pregunta para elegir el template HyDE correcto
     QUESTION_PATTERNS = {
-        "definition": r"(?i)(what is|what are|define|definition|meaning of|what's)",
-        "how_to": r"(?i)(how to|how do|steps to|process of|tutorial|guide|way to)",
-        "comparison": r"(?i)(difference|vs|versus|compare|better|worse|similarities|differences between|compare to)",
-        "factual": r"(?i)(how many|how much|when|where|who|which|why|what time|what date)"
-    }
-
-    # ─── STOPWORDS FOR ENGLISH ───
-    STOPWORDS = {
-        # Question words
-        "what", "when", "where", "which", "who", "whom", "whose", "why", "how",
-        # Articles
-        "a", "an", "the",
-        # Prepositions
-        "of", "in", "to", "for", "with", "on", "at", "by", "from", "up", "down",
-        "off", "over", "under", "again", "further", "then", "once",
-        # Conjunctions
-        "and", "or", "but", "so", "yet", "for", "nor",
-        # Verbs (common)
-        "is", "am", "are", "was", "were", "be", "been", "being", "have", "has",
-        "had", "having", "do", "does", "did", "doing", "will", "would", "shall",
-        "should", "may", "might", "must", "can", "could",
-        # Pronouns
-        "he", "she", "it", "they", "we", "you", "i", "me", "him", "her", "us",
-        "them", "my", "your", "his", "her", "its", "our", "their",
-        # Other common
-        "not", "no", "very", "too", "just", "but", "like", "so", "than", "then",
-        "now", "only", "own", "same", "such", "than", "that", "these", "those",
-        "this", "those", "through", "until"
+        "definition": r"(?i)(qué es|qué son|define|definición|what is|what are|significa)",
+        "how_to": r"(?i)(cómo|how to|pasos|steps|proceso|tutorial|guide)",
+        "comparison": r"(?i)(diferencia|vs|versus|comparar|mejor|peor|compare|difference)",
+        "factual": r"(?i)(cuánto|cuándo|dónde|quién|how many|when|where|who)"
     }
 
     def __init__(self):
-        """Initializes QueryEnhancer. No models or connections required."""
+        """Inicializa el QueryEnhancer. No requiere modelos ni conexiones."""
         pass
 
     def enhance(self, query: str, mode: str = "simplified") -> dict:
         """
-        Main entry point. Enhances the query according to mode.
+        Punto de entrada principal. Mejora la query según el modo.
 
         Args:
-            query: Original user query.
-                   Example: "What is natural language processing?"
+            query: Query original del usuario.
+                   Ejemplo: "¿Qué es el procesamiento de lenguaje natural?"
 
-            mode: "simplified" (for Fast Model) or "extended" (for Slow Model)
+            mode: "simplified" (para Fast Model) o "extended" (para Slow Model)
 
         Returns:
-            dict with:
+            dict con:
             {
-                "original": "What is natural language processing?",
-                "cleaned": "What is natural language processing",
-                "search_queries": ["query1", "query2", ...],  # List for searching
-                "hyde_doc": "hypothetical document..." | None,  # Only in extended
+                "original": "¿Qué es el procesamiento de lenguaje natural?",
+                "cleaned": "Qué es el procesamiento de lenguaje natural",
+                "search_queries": ["query1", "query2", ...],  # Lista para buscar
+                "hyde_doc": "documento hipotético..." | None,  # Solo en extended
                 "mode": "simplified" | "extended"
             }
 
-        SIMPLIFIED MODE (Fast):
-            - Only cleans the query (removes special chars, normalizes spaces)
-            - Returns 1 search query
-            - Latency: ~0ms (regex only)
+        MODO SIMPLIFIED (Fast):
+            - Solo limpia la query (quita caracteres raros, normaliza espacios)
+            - Devuelve 1 sola query de búsqueda
+            - Latencia: ~0ms (solo regex)
 
-        EXTENDED MODE (Slow):
-            - Clean + generate variants + generate HyDE
-            - Returns 4-5 search queries
-            - Latency: ~1ms (regex and templates only, no AI)
+        MODO EXTENDED (Slow):
+            - Limpia + genera variantes + genera HyDE
+            - Devuelve 4-5 queries de búsqueda
+            - Latencia: ~1ms (solo regex y templates, no hay IA)
         """
         cleaned = self._clean_query(query)
 
         if mode == "simplified":
-            # ─── FAST MODE: Only cleaning, direct search ───
+            # ─── MODO FAST: Solo limpieza, búsqueda directa ───
             return {
                 "original": query,
                 "cleaned": cleaned,
@@ -183,16 +166,16 @@ class QueryEnhancer:
             }
 
         elif mode == "extended":
-            # ─── SLOW MODE: Query Expansion + HyDE ───
-            # 1. Generate question variants
+            # ─── MODO SLOW: Query Expansion + HyDE ───
+            # 1. Generar variantes de la pregunta
             expanded = self._expand_query(cleaned)
 
-            # 2. Generate hypothetical document (HyDE)
+            # 2. Generar documento hipotético (HyDE)
             hyde_doc = self._generate_hyde(cleaned)
 
-            # 3. Combine: original + expansions + HyDE
-            # All these queries will be searched in ChromaDB and results
-            # will be merged (deduplicated) in rag_component.py
+            # 3. Combinar: original + expansiones + HyDE
+            # Todas estas queries se buscarán en ChromaDB y los resultados
+            # se fusionan (merge) eliminando duplicados en rag_component.py
             search_queries = [cleaned] + expanded + [hyde_doc]
 
             return {
@@ -203,51 +186,48 @@ class QueryEnhancer:
                 "mode": "extended"
             }
         else:
-            raise ValueError(f"Mode '{mode}' not recognized. Use 'simplified' or 'extended'.")
+            raise ValueError(f"Modo '{mode}' no reconocido. Usar 'simplified' o 'extended'.")
 
     # ─────────────────────────────────────────────
-    # PRIVATE METHODS (internal helpers)
+    # MÉTODOS PRIVADOS (helpers internos)
     # ─────────────────────────────────────────────
     def _clean_query(self, query: str) -> str:
         """
-        Basic query cleaning. Used in BOTH modes.
-        - Removes multiple spaces: "hello   world" → "hello world"
-        - Removes unnecessary special characters: emojis, @, #, etc.
-        - Keeps: letters, numbers, question marks, basic punctuation
+        Limpieza básica de la query. Usado en AMBOS modos.
+        - Elimina espacios múltiples: "hola   mundo" → "hola mundo"
+        - Elimina caracteres especiales innecesarios: emojis, @, #, etc.
+        - Mantiene: letras, números, signos de pregunta, acentos, puntuación básica
         """
-        # Normalize whitespace
         query = re.sub(r'\s+', ' ', query.strip())
-        # Keep alphanumeric, basic punctuation, and spaces
-        query = re.sub(r'[^\w\s\?\!\.,;:\-\']', '', query)
+        query = re.sub(r'[^\w\s¿?¡!áéíóúñÁÉÍÓÚÑ.,;:\-]', '', query)
         return query
-
     def _expand_query(self, query: str) -> list[str]:
         """
-        Query Expansion: generates variants of the original query.
-        Only used in Extended mode.
-        Strategies:
-        1. Reformulation: Question → Declarative statement
-           "What is NLP?" → "NLP is natural language processing"
-           → Documents are usually declarative, not interrogative
-        2. Keywords: Only keywords without stopwords
-           "How do I train the DPO model?" → "train DPO model"
-           → Searches by content without grammatical noise
-        3. Contextualization: Add "Hannah chatbot" at the beginning
-           → Biases search toward project domain documents
+        Query Expansion: genera variantes de la query original.
+        Solo se usa en modo Extended.
+        Estrategias:
+        1. Reformulación: Pregunta → Afirmación declarativa
+           "¿Qué es NLP?" → "NLP"
+           → Los documentos suelen ser afirmativos, no interrogativos
+        2. Keywords: Solo palabras clave sin stopwords
+           "¿Cómo entreno el modelo DPO?" → "entrenar modelo DPO"
+           → Busca por contenido sin ruido gramatical
+        3. Contextualización: Añadir "Hannah chatbot" al inicio
+           → Sesga la búsqueda hacia documentos del dominio del proyecto
         """
         variants = []
 
-        # Variant 1: Question → Statement
+        # Variante 1: Pregunta → Afirmación
         declarative = self._question_to_statement(query)
-        if declarative and declarative != query:
+        if declarative != query:
             variants.append(declarative)
 
-        # Variant 2: Only keywords
+        # Variante 2: Solo keywords
         keywords = self._extract_keywords(query)
-        if keywords and keywords != query.lower():
+        if keywords:
             variants.append(keywords)
 
-        # Variant 3: Contextualized to project
+        # Variante 3: Contextualizada al proyecto
         contextual = f"Hannah chatbot {query}"
         variants.append(contextual)
 
@@ -255,14 +235,14 @@ class QueryEnhancer:
 
     def _generate_hyde(self, query: str) -> str:
         """
-        HyDE: Generates a hypothetical document based on templates.
-        Process:
-        1. Classifies question type (definition, how_to, comparison, factual)
-        2. Extracts main topic from query
-        3. Fills corresponding template with the topic
-        In a full implementation, an LLM (like Qwen2.5-14B or even Hannah)
-        would be used here to generate the document.
-        Our template approach is an MVP that works without an LLM.
+        HyDE: Genera un documento hipotético basado en templates.
+        Proceso:
+        1. Clasifica el tipo de pregunta (definición, how-to, comparación, factual)
+        2. Extrae el tema principal de la query
+        3. Rellena el template correspondiente con el tema
+        En una implementación completa, aquí se usaría un LLM
+        (como Qwen2.5-14B o incluso Hannah) para generar el documento.
+        Nuestro approach con templates es un MVP que funciona sin LLM.
         """
         question_type = self._classify_question(query)
         topic = self._extract_topic(query)
@@ -272,8 +252,8 @@ class QueryEnhancer:
 
     def _classify_question(self, query: str) -> str:
         """
-        Classifies question type using regex.
-        Returns: "definition", "how_to", "comparison", "factual", or "default"
+        Clasifica el tipo de pregunta usando regex.
+        Retorna: "definition", "how_to", "comparison", "factual", o "default"
         """
         for qtype, pattern in self.QUESTION_PATTERNS.items():
             if re.search(pattern, query):
@@ -282,66 +262,109 @@ class QueryEnhancer:
 
     def _extract_topic(self, query: str) -> str:
         """
-        Extracts main topic by removing question words and stopwords.
-        "What is natural language processing?" → "natural language processing"
+        Extrae el tema principal eliminando palabras interrogativas y stopwords.
+        "¿Qué es el procesamiento de lenguaje natural?" → "procesamiento lenguaje natural"
         """
-        # Remove question marks and normalize
-        cleaned = query.replace("?", "").replace("!", "")
-        
-        # Split into words
-        words = cleaned.lower().split()
-        
-        # Remove stopwords (including question words)
-        topic_words = [w for w in words if w not in self.STOPWORDS]
-        
-        # If nothing left, use first few words or original
-        if not topic_words:
-            topic_words = words[:3] if words else [cleaned]
-        
-        return " ".join(topic_words)
+        stopwords = [
+            # Español
+            "qué", "que", "cómo", "como", "cuál", "cual", "cuánto", "cuanto",
+            "cuándo", "cuando", "dónde", "donde", "quién", "quien", "por qué",
+            "es", "son", "está", "están", "tiene", "tienen", "puede", "pueden",
+            "el", "la", "los", "las", "un", "una", "unos", "unas",
+            "de", "del", "en", "con", "para", "por", "a", "al",
+            # Inglés
+            "what", "how", "when", "where", "who", "which", "is", "are", "the",
+            # Pronombres
+            "me", "se", "le", "lo", "nos"
+        ]
+        words = query.lower().replace("¿", "").replace("?", "").split()
+        topic_words = [w for w in words if w not in stopwords]
+        return " ".join(topic_words) if topic_words else query
 
     def _question_to_statement(self, query: str) -> str:
         """
-        Converts question to declarative statement.
-        "What is NLP?" → "NLP is natural language processing"
-        "How does DPO work?" → "DPO works by..."
+        Convierte pregunta a afirmación eliminando signos y palabras interrogativas.
+        "¿Qué es NLP?" → "NLP"
+        "¿Cómo funciona el DPO?" → "funciona el DPO"
         """
-        # Remove question marks
-        statement = query.replace("?", "").replace("!", "").strip()
-        
-        # Common question patterns and their statement conversions
-        patterns = [
-            (r"(?i)^what is\s+(.+)$", r"\1 is a concept related to"),
-            (r"(?i)^what are\s+(.+)$", r"\1 are concepts related to"),
-            (r"(?i)^how does\s+(.+?)\s+work$", r"\1 works by following specific processes"),
-            (r"(?i)^how do\s+(.+)$", r"to \1, one should follow established procedures"),
-            (r"(?i)^why does\s+(.+)$", r"\1 occurs due to underlying mechanisms"),
-            (r"(?i)^when does\s+(.+)$", r"\1 happens under specific conditions"),
-            (r"(?i)^what('s| is)\s+(.+)$", r"\2 is a term that refers to"),
+        statement = query.replace("¿", "").replace("?", "").strip()
+        prefixes = [
+            "qué es ", "qué son ", "cómo ", "cuál es ", "cuánto ",
+            "cuándo ", "dónde ", "quién ", "por qué "
         ]
-        
-        for pattern, replacement in patterns:
-            match = re.match(pattern, statement)
-            if match:
-                topic = match.group(1) if len(match.groups()) == 1 else match.group(2)
-                return replacement.format(topic)
-        
-        # If no pattern matches, just capitalize first letter
-        if statement and statement[0].islower():
-            statement = statement[0].upper() + statement[1:]
-        
-        return statement if statement != query else ""
+        lower = statement.lower()
+        for prefix in prefixes:
+            if lower.startswith(prefix):
+                statement = statement[len(prefix):]
+                break
+        return statement.strip()
 
     def _extract_keywords(self, query: str) -> str:
         """
-        Extracts only meaningful keywords (no stopwords).
-        "How does DPO training work in Hannah?" → "DPO training work Hannah"
+        Extrae solo palabras significativas (no stopwords).
+        "¿Cómo funciona el entrenamiento DPO en Hannah?" → "funciona entrenamiento DPO Hannah"
         """
-        # Remove punctuation and question marks
-        cleaned = re.sub(r'[^\w\s]', '', query.lower())
-        words = cleaned.split()
-        
-        # Filter out stopwords and short words (len <= 2)
-        keywords = [w for w in words if w not in self.STOPWORDS and len(w) > 2]
-        
+        stopwords = {
+            "qué", "que", "cómo", "como", "cuál", "cual", "es", "son",
+            "el", "la", "los", "las", "un", "una", "de", "del", "en",
+            "con", "para", "por", "a", "al", "y", "o", "pero", "si",
+            "no", "más", "menos", "muy", "se", "le", "lo", "me", "te",
+            "nos", "su", "sus", "mi", "tu", "está", "están", "tiene",
+            "tienen", "puede", "pueden", "hay"
+        }
+        words = re.findall(r'\w+', query.lower())
+        keywords = [w for w in words if w not in stopwords and len(w) > 2]
         return " ".join(keywords)
+
+
+# ============================================================================
+# PRUEBA RÁPIDA
+# ============================================================================
+# Ejecutar: python query_enhancer.py
+# Resultado esperado:
+#   - Simplified: 1 query de búsqueda (solo limpieza)
+#   - Extended: 4-5 queries (original + expansiones + HyDE)
+# ============================================================================
+if __name__ == "__main__":
+    print("=" * 60)
+    print("  Test: QueryEnhancer")
+    print("=" * 60)
+
+    enhancer = QueryEnhancer()
+
+    # Test 1: Modo Simplified (Fast)
+    print("\n--- Test 1: MODO SIMPLIFIED (FAST) ---")
+    result = enhancer.enhance("¿Qué es el procesamiento de lenguaje natural?", mode="simplified")
+    print(f"  Original:       {result['original']}")
+    print(f"  Cleaned:        {result['cleaned']}")
+    print(f"  Search queries: {result['search_queries']}")
+    print(f"  HyDE:           {result['hyde_doc']}")
+    assert len(result['search_queries']) == 1, "Simplified debe tener 1 query"
+
+    # Test 2: Modo Extended (Slow)
+    print("\n--- Test 2: MODO EXTENDED (SLOW) ---")
+    result2 = enhancer.enhance("¿Cómo funciona el entrenamiento DPO en Hannah?", mode="extended")
+    print(f"  Original:       {result2['original']}")
+    print(f"  Cleaned:        {result2['cleaned']}")
+    print(f"  Search queries ({len(result2['search_queries'])}):")
+    for i, q in enumerate(result2['search_queries']):
+        label = ["original", "declarativa", "keywords", "contextual", "HyDE"][i] if i < 5 else f"extra_{i}"
+        print(f"    [{i}] ({label}) {q[:80]}{'...' if len(q) > 80 else ''}")
+    print(f"  HyDE doc:       {result2['hyde_doc'][:100]}...")
+    assert len(result2['search_queries']) >= 3, "Extended debe tener múltiples queries"
+    assert result2['hyde_doc'] is not None, "Extended debe tener HyDE"
+
+    # Test 3: Clasificación de preguntas
+    print("\n--- Test 3: Clasificación de preguntas ---")
+    tests = [
+        ("¿Qué es NLP?", "definition"),
+        ("¿Cómo entreno el modelo?", "how_to"),
+        ("¿Cuál es la diferencia entre SFT y DPO?", "comparison"),
+        ("¿Cuántos parámetros tiene?", "factual"),
+    ]
+    for query, expected in tests:
+        got = enhancer._classify_question(query)
+        status = "✓" if got == expected else "✗"
+        print(f"  {status} '{query}' → {got} (esperado: {expected})")
+
+    print("\nTodos los tests completados.")

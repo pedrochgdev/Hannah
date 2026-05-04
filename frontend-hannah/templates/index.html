@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/static/css/style.css?v=2">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 </head>
 <body>
     <div class="chat-container" id="chatContainer">
@@ -26,6 +27,9 @@
                 </div>
             </div>
             <div class="header-actions">
+		<button class="btn-icon active" id="btnToggleVoice" title="Activar/Desactivar Voz">
+        	    <span class="material-icons-round" id="voiceIcon">volume_up</span>
+    		</button>
                 <button class="btn-icon" id="btnHistory" title="History">
                     <span class="material-icons-round">history</span>
                     <span class="btn-label">History</span>
@@ -90,6 +94,9 @@
         <!-- Input Area -->
         <div class="chat-input-area">
             <div class="input-wrapper">
+		<button class="btn-icon mic-btn" id="btnMic" title="Hablar con Hannah">
+        	    <span class="material-icons-round">mic</span>
+	    	</button>
                 <textarea
                     id="messageInput"
                     placeholder="Type your message here..."

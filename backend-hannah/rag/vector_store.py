@@ -65,6 +65,7 @@ import shutil
 import os
 from rag.embeddings import EmbeddingService
 
+
 class VectorStore:
     """
     Base de datos vectorial para el conocimiento de Hannah.
@@ -184,54 +185,58 @@ class VectorStore:
             n_results=n_results
         )
         return results
-    
-    # Añade estos métodos a tu clase VectorStore
-    def get_all_documents(self, limit: int = 100, include_embeddings: bool = False):
-        """
-        Obtener todos los documentos almacenados usando la API oficial.
-        
-        Args:
-            limit: Número máximo de documentos a recuperar
-            include_embeddings: Si incluir los vectores (True) o no (False)
-        
-        Returns:
-            Diccionario con documentos, metadatos e IDs
-        """
-        # Para .get(), solo estos include son válidos
-        includes = ["documents", "metadatas"]
-        if include_embeddings:
-            includes.append("embeddings")
-        
-        # Obtener documentos de la colección
-        results = self.collection.get(
-            limit=limit,
-            include=includes
-        )
-        
-        return results
 
-    def view_database_summary(self):
-        """
-        Mostrar un resumen de lo que hay en la base de datos vectorial.
-        """
-        total = self.collection.count()
-        print(f"\n{'='*50}")
-        print(f"  RESÚMEN DE LA BASE DE DATOS VECTORIAL")
-        print(f"{'='*50}")
-        print(f"Total de documentos: {total}")
-        
-        if total > 0:
-            # Obtener algunos documentos de muestra
-            muestras = self.collection.get(limit=5, include=["documents", "metadatas"])
-            
-            print(f"\n--- MUESTRA DE DOCUMENTOS (primeros {len(muestras['documents'])}) ---")
-            for i, (doc_id, texto, metadata) in enumerate(zip(
-                muestras['ids'], 
-                muestras['documents'], 
-                muestras['metadatas']
-            )):
-                print(f"\n[{i+1}] ID: {doc_id}")
-                print(f"    Texto: {texto[:150]}..." if len(texto) > 150 else f"    Texto: {texto}")
-                print(f"    Metadatos: {metadata}")
-        
-        return total
+
+# ============================================================================
+# PRUEBA RÁPIDA
+# ============================================================================
+# Ejecutar: python vector_store.py
+# Resultado esperado: Encuentra "Hannah es un modelo..." al buscar "parámetros"
+# Esto crea una carpeta ./hannah_vectordb/ en el directorio actual.
+# ============================================================================
+if __name__ == "__main__":
+
+    print("=" * 50)
+    print("  Test: VectorStore")
+    print("=" * 50)
+
+    # Usar una BD de test temporal
+    TEST_DB = "./test_vectordb"
+    if os.path.exists(TEST_DB):
+        shutil.rmtree(TEST_DB)
+
+    db = VectorStore(db_path=TEST_DB)
+
+    # Insertar documentos de prueba
+    db.add_documents(
+        documents=[
+            "Hannah es un modelo transformer de 360 millones de parámetros.",
+            "El cielo es azul porque la atmósfera dispersa la luz.",
+            "ChromaDB es una base de datos vectorial open-source."
+        ],
+        metadatas=[
+            {"source": "arquitectura"},
+            {"source": "ciencia"},
+            {"source": "tecnologia"}
+        ],
+        ids=["doc1", "doc2", "doc3"]
+    )
+
+    # Buscar
+    print("\n--- Búsqueda: '¿Cuántos parámetros tiene Hannah?' ---")
+    res = db.search("¿Cuántos parámetros tiene Hannah?", n_results=2)
+    for i, (doc, dist) in enumerate(zip(res['documents'][0], res['distances'][0])):
+        sim = 1 - dist
+        print(f"  [{i+1}] (similitud={sim:.4f}) {doc}")
+
+    # =========================================================
+    # Limpieza de la BD de test
+    # =========================================================
+
+    del db                  # destruye la conexión a ChromaDB
+    gc.collect()            # libera objetos huérfanos (incluye sqlite)
+    time.sleep(0.5)         # da tiempo a Windows para soltar los locks
+
+    shutil.rmtree(TEST_DB, ignore_errors=True)
+    print(f"\n[Cleanup] BD de test eliminada.")
+    print("Test completado.")

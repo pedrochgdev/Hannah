@@ -77,6 +77,7 @@ from rag.semantic_cache import SemanticCache
 from rag.query_enhancer import QueryEnhancer
 from rag.context_handler import ContextHandler
 
+
 class RAGComponent:
     """
     Este es el único módulo que el resto del equipo necesita usar.

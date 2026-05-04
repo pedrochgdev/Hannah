@@ -1,17 +1,32 @@
 /**
  * Hannah Chat - Frontend Logic
- * Handles chat interface, history, and backend communication.
+ * Handles chat interface, history, backend communication, STT (Whisper), and TTS (Kokoro).
  */
 
 // ---- State ----
 let currentConversation = [];
 let conversationId = null;
 let isWaiting = false;
+let isVoiceEnabled = true;
+let isContinuousVoiceMode = false;
+// STT State
+let mediaRecorder;
+let audioChunks = [];
+let isRecording = false;
+
 let sessionId = localStorage.getItem('hannah_session_id');
 if (!sessionId) {
     sessionId = (''+[1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
     localStorage.setItem('hannah_session_id', sessionId);
 }
+
+// --- Variables para Detección de Silencio ---
+let audioContext;
+let analyser;
+let microphone;
+let silenceTimer = null;
+const SILENCE_THRESHOLD = 15; // Nivel de volumen mínimo (0-255). Súbelo si hay ruido de fondo.
+const SILENCE_DURATION = 2500; // Milisegundos de silencio necesarios para enviar el mensaje (1.5s).
 
 // ---- DOM Elements ----
 const welcomeScreen = document.getElementById('welcomeScreen');
@@ -25,6 +40,11 @@ const historyEmpty = document.getElementById('historyEmpty');
 const modelInfoModal = document.getElementById('modelInfoModal');
 const modelInfoBody = document.getElementById('modelInfoBody');
 
+// Voice DOM
+const btnToggleVoice = document.getElementById('btnToggleVoice');
+const voiceIcon = document.getElementById('voiceIcon');
+const btnMic = document.getElementById('btnMic');
+
 // ---- Init ----
 document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
@@ -32,14 +52,18 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
-    btnSend.addEventListener('click', sendMessage);
+    btnSend.addEventListener('click', () => {
+        isContinuousVoiceMode = false; // Apagar modo voz si escribes
+        sendMessage();
+    });
+    
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
+            isContinuousVoiceMode = false; // Apagar modo voz si escribes
             sendMessage();
         }
     });
-
     messageInput.addEventListener('input', () => {
         btnSend.disabled = messageInput.value.trim() === '';
         autoResizeTextarea();
@@ -66,9 +90,176 @@ function setupEventListeners() {
     modelInfoModal.addEventListener('click', (e) => {
         if (e.target === modelInfoModal) modelInfoModal.classList.remove('open');
     });
+
+    // Voice & Audio Event Listeners
+    btnToggleVoice.addEventListener('click', toggleVoiceState);
+    btnMic.addEventListener('click', toggleRecording);
 }
 
-// ---- Chat ----
+// ---- Audio Recording (STT with Faster-Whisper) ----
+async function toggleRecording() {
+    if (isRecording) {
+        isContinuousVoiceMode = false; // Apagamos el modo continuo si tú lo detienes a mano
+        stopRecording();
+    } else {
+        isContinuousVoiceMode = true; // Encendemos el modo continuo al tocar el micro
+        await startRecordingWithVAD();
+    }
+}
+
+function stopRecording() {
+    if (!isRecording) return;
+    
+    mediaRecorder.stop();
+    btnMic.classList.remove('recording');
+    btnMic.querySelector('.material-icons-round').textContent = 'mic';
+    isRecording = false;
+    
+    // Limpiamos los analizadores de audio
+    if (audioContext) {
+        audioContext.close();
+    }
+    if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+    }
+}
+
+async function startRecordingWithVAD() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Configuramos el Analizador de Audio
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        microphone = audioContext.createMediaStreamSource(stream);
+        microphone.connect(analyser);
+        
+        analyser.fftSize = 512;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        // Configuramos el MediaRecorder (igual que antes)
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => {
+            if (e.data.size > 0) audioChunks.push(e.data);
+        };
+        mediaRecorder.onstop = sendAudioForTranscription; // Se ejecuta al llamar a stopRecording()
+
+        mediaRecorder.start();
+        isRecording = true;
+        btnMic.classList.add('recording');
+        btnMic.querySelector('.material-icons-round').textContent = 'stop';
+        messageInput.placeholder = "Habla, te estoy escuchando...";
+
+	let hasSpoken = false;
+
+        // Bucle de detección de silencio
+        function detectSilence() {
+            if (!isRecording) return;
+            
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for(let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+            }
+            let averageVolume = sum / bufferLength;
+
+            if (averageVolume > SILENCE_THRESHOLD) {
+                // Hay ruido/voz: cancelamos el temporizador de silencio
+		hasSpoken = true;
+                if (silenceTimer) {
+                    clearTimeout(silenceTimer);
+                    silenceTimer = null;
+                }
+            } else {
+                // Hay silencio: iniciamos el temporizador si no existe
+                if (hasSpoken && !silenceTimer) {
+                    silenceTimer = setTimeout(() => {
+                        console.log("Silencio detectado. Deteniendo grabación...");
+                        stopRecording();
+                    }, SILENCE_DURATION);
+                }
+            }
+            
+            // Seguimos analizando en el siguiente frame
+            requestAnimationFrame(detectSilence);
+        }
+        
+        detectSilence(); // Iniciamos el bucle
+
+    } catch (err) {
+        console.error("No se pudo acceder al micrófono:", err);
+        alert("Por favor, permite el acceso al micrófono.");
+    }
+}
+
+async function sendAudioForTranscription() {
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'voice.webm');
+
+    messageInput.placeholder = "Transcribiendo...";
+    
+    try {
+        // Llama a tu endpoint backend donde corre faster-whisper
+        const response = await fetch('/api/v1/transcribe', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.text) {
+            // Añade el texto al input
+            messageInput.value = data.text;
+            btnSend.disabled = false;
+            autoResizeTextarea();
+	    sendMessage()
+        }
+    } catch (err) {
+        console.error("Error en la transcripción:", err);
+    } finally {
+        messageInput.placeholder = "Type your message or use the mic...";
+    }
+}
+
+// ---- Text-to-Speech (TTS with Kokoro) ----
+function toggleVoiceState() {
+    isVoiceEnabled = !isVoiceEnabled;
+    voiceIcon.textContent = isVoiceEnabled ? 'volume_up' : 'volume_off';
+    btnToggleVoice.classList.toggle('active', isVoiceEnabled);
+}
+
+async function playHannahVoice(text) {
+    if (!isVoiceEnabled) return;
+
+    try {
+        const response = await fetch('/api/v1/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+        });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const audioUrl = URL.createObjectURL(blob);
+            const audio = new Audio(audioUrl);
+	    audio.onended = () => {
+    // Cuando Hannah termina de hablar, volvemos a encender el micrófono automáticamente
+    		if (isContinuousVoiceMode && !isRecording) {
+        		startRecordingWithVAD();
+  	   	}	
+	    };
+            audio.play();
+        }
+    } catch (error) {
+        console.error("Error reproduciendo la voz de Hannah:", error);
+    }
+}
+
+// ---- Chat Core ----
 async function sendMessage() {
     const text = messageInput.value.trim();
     if (!text || isWaiting) return;
@@ -92,14 +283,14 @@ async function sendMessage() {
     scrollToBottom();
 
     try {
-        const response = await fetch(`http://${window.location.hostname}:8000/api/v1/chat`, {
-    		method: 'POST',
-    		headers: { 'Content-Type': 'application/json' },
-    		body: JSON.stringify({
-        		session_id: sessionId,
-		        prompt: text,           // solo el mensaje actual, no el historial completo
-    		}),
-	});
+        const response = await fetch(`/api/v1/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: sessionId,
+                prompt: text,
+            }),
+        });
 
         const data = await response.json();
 
@@ -109,6 +300,9 @@ async function sendMessage() {
             const botMsg = { role: 'assistant', content: data.response, time: new Date().toISOString() };
             currentConversation.push(botMsg);
             appendMessage('bot', data.response);
+            
+            // REPRODUCIR AUDIO DE HANNAH
+            playHannahVoice(data.response);
         }
     } catch (err) {
         appendMessage('bot', "Couldn't connect to the server. Make sure it's running.");
@@ -130,12 +324,16 @@ function appendMessage(role, text) {
 
     const avatarIcon = role === 'user' ? 'person' : 'favorite';
 
+    const bubbleContent = role === 'user' 
+    ? escapeHtml(text)           // usuario: texto plano
+    : marked.parse(text);        // bot: renderiza markdown
+
     msgDiv.innerHTML = `
         <div class="message-avatar">
             <span class="material-icons-round">${avatarIcon}</span>
         </div>
         <div class="message-content">
-            <div class="bubble">${escapeHtml(text)}</div>
+            <div class="bubble ${role === 'bot' ? 'bubble-markdown' : ''}">${bubbleContent}</div>
             <span class="message-time">${timeStr}</span>
         </div>
     `;
@@ -250,8 +448,6 @@ function renderHistory(history) {
                 hour: '2-digit', minute: '2-digit'
             });
 
-            const msgCount = entry.messages ? entry.messages.length : 0;
-
             const item = document.createElement('div');
             item.className = 'history-item';
             item.innerHTML = `
@@ -304,6 +500,7 @@ function clearHistory() {
         loadHistory();
     }
 }
+
 function startNewChat() {
     sessionId = (''+[1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
     localStorage.setItem('hannah_session_id', sessionId);

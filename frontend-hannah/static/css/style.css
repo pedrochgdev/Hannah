@@ -351,6 +351,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-width: 0;        /* ← esto es clave en flexbox */
+    max-width: 100%;
 }
 
 .bubble {
@@ -841,4 +843,74 @@ body {
         max-height: 100vh;
         border-radius: 0;
     }
+}
+/* ---- Voice & Mic Styles ---- */
+.mic-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    transition: var(--transition);
+}
+
+.mic-btn:hover {
+    color: var(--primary);
+    background: rgba(233, 30, 99, 0.1);
+}
+
+.mic-btn.recording {
+    color: white;
+    background: #f44336;
+    animation: pulse-record 1.5s infinite;
+}
+
+@keyframes pulse-record {
+    0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
+}
+
+#btnToggleVoice.active {
+    color: #4caf50; /* Verde cuando la voz está activada */
+}
+
+.bubble {
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.bubble.bubble-markdown {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    word-wrap: break-word;
+    box-sizing: border-box;
+}
+
+.bubble-markdown pre {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    font-size: 13px;
+    margin: 8px 0;
+    width: 100%;
+    max-width: 100%;
+    white-space: pre;
+    word-break: normal;
+    box-sizing: border-box;
+}
+
+.bubble-markdown code {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 4px;
+    padding: 2px 5px;
+    font-size: 13px;
+    font-family: monospace;
+}
+
+.bubble-markdown p {
+    margin: 0 0 6px 0;
+}
+
+.bubble-markdown p:last-child {
+    margin-bottom: 0;
 }

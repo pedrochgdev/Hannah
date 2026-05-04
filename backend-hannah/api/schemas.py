@@ -62,3 +62,11 @@ class HealthResponse(BaseModel):
 class SessionHistoryResponse(BaseModel):
     session_id: str
     turns: list[dict]
+
+# ── Audio / TTS ───────────────────────────────────────────────────────
+
+class TTSRequest(BaseModel):
+    text: str = Field(
+        ..., 
+        description="El texto que Hannah debe leer en voz alta."
+    )
