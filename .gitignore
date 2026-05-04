@@ -9,7 +9,7 @@ checkpoints/
 OLMo-core/
 backend-hannah/models/
 backend-hannah/hannah_vectordb/
-backend-hannah/hannah_knowledge
+backend-hannah/rag/hannah_knowledge/
 
 # Archivos de datos específicos
 *.jsonl
