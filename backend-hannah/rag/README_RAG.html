@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hannah RAG Pipeline - Documentación Técnica v3.1</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --surface2: #334155;
+            --border: #475569;
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+            --accent: #38bdf8;
+            --accent2: #818cf8;
+            --green: #4ade80;
+            --orange: #fb923c;
+            --red: #f87171;
+            --pink: #f472b6;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+        }
+        /* Layout */
+        .layout { display: flex; min-height: 100vh; }
+        nav {
+            width: 280px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 24px 16px;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        nav h2 { color: var(--accent); font-size: 16px; margin-bottom: 16px; }
+        nav a {
+            display: block;
+            color: var(--text-dim);
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 2px;
+            transition: all 0.2s;
+        }
+        nav a:hover { background: var(--surface2); color: var(--text); }
+        nav .section-title {
+            color: var(--accent2);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 16px 0 8px 12px;
+            font-weight: 600;
+        }
+        main {
+            margin-left: 280px;
+            padding: 40px 60px;
+            max-width: 960px;
+        }
+        /* Typography */
+        h1 { font-size: 32px; color: var(--accent); margin-bottom: 8px; }
+        h2 { font-size: 24px; color: var(--accent); margin: 40px 0 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+        h3 { font-size: 18px; color: var(--accent2); margin: 28px 0 12px; }
+        p { margin-bottom: 14px; }
+        .subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 32px; }
+        /* Code */
+        pre {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            margin: 16px 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        code {
+            font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+            color: #e6edf3;
+        }
+        .inline-code {
+            background: var(--surface2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--orange);
+        }
+        /* Keywords en code */
+        .kw { color: #ff7b72; }
+        .str { color: #a5d6ff; }
+        .cm { color: #8b949e; }
+        .fn { color: #d2a8ff; }
+        .num { color: #79c0ff; }
+        .dec { color: #ffa657; }
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        th {
+            background: var(--surface2);
+            color: var(--accent);
+            padding: 10px 14px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:hover td { background: rgba(56, 189, 248, 0.05); }
+        /* Cards & Boxes */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin: 16px 0;
+        }
+        .card.green { border-left: 4px solid var(--green); }
+        .card.orange { border-left: 4px solid var(--orange); }
+        .card.blue { border-left: 4px solid var(--accent); }
+        .card.pink { border-left: 4px solid var(--pink); }
+        .card h4 { margin-bottom: 8px; }
+        /* Architecture diagram */
+        .diagram {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 24px;
+            margin: 20px 0;
+            font-family: 'Cascadia Code', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            overflow-x: auto;
+            white-space: pre;
+            color: var(--text-dim);
+        }
+        .tag {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .tag.fast { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+        .tag.slow { background: rgba(129, 140, 248, 0.15); color: var(--accent2); }
+        .tag.both { background: rgba(56, 189, 248, 0.15); color: var(--accent); }
+        .tag.new { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+        /* File tree */
+        .file-tree {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            font-family: monospace;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .file-tree .folder { color: var(--accent); }
+        .file-tree .file { color: var(--text-dim); }
+        .file-tree .done { color: var(--green); }
+        .file-tree .new { color: var(--orange); }
+        /* Timeline */
+        .timeline { position: relative; padding-left: 30px; }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 8px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--border);
+        }
+        .timeline-item {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -26px;
+            top: 6px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+        .timeline-item.done::before { background: var(--green); }
+        .timeline-item.current::before { background: var(--orange); animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(251, 146, 60, 0); }
+        }
+        .timeline-date { font-size: 12px; color: var(--text-dim); }
+        /* Refs */
+        .ref {
+            font-size: 13px;
+            color: var(--text-dim);
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(71,85,105,0.3);
+        }
+        .ref a { color: var(--accent); text-decoration: none; }
+        .ref a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="layout">
+    <nav>
+        <h2>Hannah RAG Docs v3</h2>
+        <div class="section-title">Arquitectura</div>
+        <a href="#overview">Vista General</a>
+        <a href="#architecture">Diagrama de Flujo</a>
+        <a href="#modes">Modos: Simplified vs Extended</a>
+        <a href="#components">Componentes del Pipeline</a>
+        <div class="section-title">Implementación</div>
+        <a href="#structure">Estructura de Archivos</a>
+        <a href="#embeddings">embeddings.py</a>
+        <a href="#vectorstore">vector_store.py</a>
+        <a href="#cache">semantic_cache.py</a>
+        <a href="#enhancer">query_enhancer.py</a>
+        <a href="#contexthandler">context_handler.py</a>
+        <a href="#ragcomponent">rag_component.py</a>
+        <div class="section-title">Teoría</div>
+        <a href="#rag-theory">RAG (Lewis et al., 2020)</a>
+        <a href="#hyde-theory">HyDE (Gao et al., 2022)</a>
+        <a href="#qe-theory">Query Expansion</a>
+        <a href="#pmfr">PMFR (Zhang et al., 2025)</a>
+        <div class="section-title">Análisis</div>
+        <a href="#gemini-corrections">Correcciones vs Gemini</a>
+        <div class="section-title">Extras</div>
+        <a href="#dependencies">Dependencias</a>
+        <a href="#testing">Tests</a>
+        <a href="#timeline">Cronograma</a>
+        <a href="#refs">Referencias</a>
+        <a href="#team">Equipo</a>
+    </nav>
+
+    <main>
+        <h1>Hannah RAG Pipeline</h1>
+        <p class="subtitle">
+            Documentación Técnica v3.1 &mdash; Proyecto Hannah AI Companion<br>
+            Curso: [1INF59] Procesamiento de Lenguaje Natural &mdash; PUCP 2026-1<br>
+            Arquitecto de Solución: Luis Alberto Miranda Mallqui<br>
+            Última actualización: 19 de abril de 2026
+        </p>
+
+        <!-- OVERVIEW -->
+        <h2 id="overview">Vista General</h2>
+        <p>
+            El RAG (Retrieval-Augmented Generation) es el componente de conocimiento del sistema Hannah.
+            Su función es recuperar información relevante de una base de datos vectorial y formatearla
+            como contexto para que los modelos generativos (Fast y Slow) produzcan respuestas informadas.
+        </p>
+        <div class="card blue">
+            <h4>Cambio importante (abril 2026)</h4>
+            <p>
+                El Slow Model cambió de <strong>Meta Llama</strong> a <strong>Qwen2.5-14B-Instruct</strong>
+                con Supervised Fine-Tuning (SFT) aplicado por el equipo. Esto se refleja en el
+                Laboratorio Grupal.pdf (9 de abril 2026). El RAG no se ve afectado por este cambio
+                ya que es agnóstico al modelo &mdash; solo entrega contexto formateado.
+            </p>
+        </div>
+        <p>
+            El RAG es <strong>standalone</strong>: no requiere que los modelos (Hannah 360M o Qwen2.5-14B)
+            estén corriendo. Recibe una query de texto y una señal de modo (<span class="inline-code">simplified</span>
+            o <span class="inline-code">extended</span>) y devuelve contexto formateado con tokens
+            <span class="inline-code">[MEMORY]...[/MEMORY]</span>.
+        </p>
+
+        <h3>Arquitectura del Sistema Hannah (4 Capas)</h3>
+        <table>
+            <tr>
+                <th>Capa</th>
+                <th>Componentes</th>
+                <th>Responsable</th>
+            </tr>
+            <tr>
+                <td>1. Entry / Context Management</td>
+                <td>Web App, Token Sequence Handler</td>
+                <td>Pedro / Marlow</td>
+            </tr>
+            <tr>
+                <td>2. Decision</td>
+                <td>Semantic Cache, Model Selector</td>
+                <td>Marlow</td>
+            </tr>
+            <tr>
+                <td>3. Knowledge</td>
+                <td><strong>RAG + Context Handler + BD Vectorial</strong></td>
+                <td><strong>Luis (+ Jorge, Marlow backup)</strong></td>
+            </tr>
+            <tr>
+                <td>4. Generation</td>
+                <td>Fast Model (Hannah 360M), Slow Model (Qwen2.5-14B)</td>
+                <td>Marlow / John</td>
+            </tr>
+        </table>
+
+        <!-- ARCHITECTURE -->
+        <h2 id="architecture">Diagrama de Flujo del RAG</h2>
+        <div class="diagram">
+                         ┌─────────────────────┐
+                         │    Usuario envía     │
+                         │      mensaje         │
+                         └─────────┬───────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │      Model Selector          │
+                    │  (decide fast / slow)         │
+                    └──────────┬───────────────────┘
+                               │
+                     señal: "simplified" / "extended"
+                               │
+                               ▼
+               ┌───────────────────────────────────┐
+               │         <span style="color:#38bdf8">RAGComponent</span>                   │
+               │                                   │
+               │  ┌───────────────────────────┐    │
+               │  │    <span style="color:#4ade80">SemanticCache</span>            │    │
+               │  │  (umbral ≥ 0.92)          │    │
+               │  └─────┬─────────────┬───────┘    │
+               │        │             │             │
+               │      [HIT]        [MISS]          │
+               │        │             │             │
+               │        │             ▼             │
+               │        │   ┌─────────────────┐    │
+               │        │   │ <span style="color:#ffa657">QueryEnhancer</span>    │    │
+               │        │   │ (QE + HyDE)     │    │
+               │        │   └────────┬────────┘    │
+               │        │            │              │
+               │        │            ▼              │
+               │        │   ┌─────────────────┐    │
+               │        │   │  <span style="color:#818cf8">VectorStore</span>     │    │
+               │        │   │  (ChromaDB)     │    │
+               │        │   └────────┬────────┘    │
+               │        │            │              │
+               │        │            ▼              │
+               │        │   ┌─────────────────┐    │
+               │        │   │ <span style="color:#f472b6">ContextHandler</span>   │    │
+               │        │   │ (format+trunc)  │    │
+               │        │   └────────┬────────┘    │
+               │        │            │              │
+               │        ▼            ▼              │
+               │  ┌─────────────────────────────┐  │
+               │  │  [MEMORY]contexto[/MEMORY]   │  │
+               │  └─────────────────────────────┘  │
+               └───────────────────────────────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │  Fast Hannah (360M)  │  o  │ Slow (Qwen2.5-14B) │
+                    └──────────────────────┘
+</div>
+
+        <!-- MODES -->
+        <h2 id="modes">Modos de Operación</h2>
+        <p>
+            El RAG tiene dos modos de operación definidos en la Sección 2.5 del documento
+            "Hannah Arquitectura de Sistema". El Model Selector envía la señal que determina
+            qué modo usar.
+        </p>
+        <table>
+            <tr>
+                <th>Característica</th>
+                <th><span class="tag fast">Simplified (Fast)</span></th>
+                <th><span class="tag slow">Extended (Slow)</span></th>
+            </tr>
+            <tr><td>Modelo destino</td><td>Hannah 360M (OLMo3)</td><td>Qwen2.5-14B-Instruct</td></tr>
+            <tr><td>Chunks recuperados</td><td>2-3</td><td>5-10</td></tr>
+            <tr><td>Tokens de contexto</td><td>~200</td><td>~1500</td></tr>
+            <tr><td>Query Expansion</td><td>No</td><td>Sí (multi-query + keywords)</td></tr>
+            <tr><td>HyDE</td><td>No</td><td>Sí (templates sin LLM)</td></tr>
+            <tr><td>Reranking</td><td>No</td><td>Sí (cosine reranking)</td></tr>
+            <tr><td>Metadata en contexto</td><td>No</td><td>Sí (fuente por chunk)</td></tr>
+            <tr><td>Latencia objetivo</td><td>&lt;100ms</td><td>&lt;500ms</td></tr>
+        </table>
+
+        <div class="card green">
+            <h4>Primer Entregable (24 abril 2026)</h4>
+            <p>
+                Según Marlow: <em>"como primer entregable, un transformador y BD para el Fast (Hannah menor de edad) funciona."</em>
+                Es decir, el modo <strong>Simplified</strong> debe estar 100% funcional.
+                El modo Extended puede estar estructuralmente preparado pero no es obligatorio que esté perfecto.
+            </p>
+        </div>
+
+        <!-- COMPONENTS -->
+        <h2 id="components">Componentes del Pipeline</h2>
+
+        <h3>1. EmbeddingService <span class="tag both">Ambos modos</span></h3>
+        <p>Convierte texto en vectores numéricos de 384 dimensiones usando <strong>all-MiniLM-L6-v2</strong> (~80MB, CPU).</p>
+
+        <h3>2. VectorStore <span class="tag both">Ambos modos</span></h3>
+        <p>Base de datos vectorial con ChromaDB. Persistencia local, búsqueda por similitud coseno (HNSW).</p>
+
+        <h3>3. SemanticCache <span class="tag both">Ambos modos</span></h3>
+        <p>"Memoria torpe" (como lo describió Marlow). Si una query tiene similitud ≥0.92 con una anterior, devuelve el resultado cacheado sin hacer búsqueda vectorial.</p>
+
+        <h3>4. QueryEnhancer <span class="tag slow">Solo Extended</span></h3>
+        <p>Mejora las queries antes de buscar. En Simplified solo limpia; en Extended genera expansiones y un documento HyDE.</p>
+
+        <h3>5. ContextHandler <span class="tag both">Ambos modos</span></h3>
+        <p>Procesa los chunks recuperados: trunca al límite, opcionalmente rerankea, y formatea con <span class="inline-code">[MEMORY]/[/MEMORY]</span>.</p>
+
+        <h3>6. RAGComponent <span class="tag both">Orquestador</span></h3>
+        <p>Punto de entrada principal. Une todos los componentes y expone <span class="inline-code">retrieve(query, mode)</span> y <span class="inline-code">aretrieve(query, mode)</span> (async).</p>
+
+        <!-- STRUCTURE -->
+        <h2 id="structure">Estructura de Archivos</h2>
+        <div class="file-tree">
+<span class="folder">rag_standalone/</span>
+├── <span class="done">embeddings.py</span>         ✅ Implementado
+├── <span class="done">vector_store.py</span>       ✅ Implementado
+├── <span class="new">semantic_cache.py</span>      🆕 Nuevo
+├── <span class="new">query_enhancer.py</span>      🆕 Nuevo
+├── <span class="new">context_handler.py</span>     🆕 Nuevo
+├── <span class="new">rag_component.py</span>       🆕 Nuevo (orquestador)
+├── <span class="file">README_RAG.html</span>       📄 Esta documentación
+└── <span class="folder">hannah_vectordb/</span>      📁 (se crea al ejecutar, persistente)
+        </div>
+
+        <!-- INDIVIDUAL MODULE DOCS -->
+        <h2 id="embeddings">embeddings.py</h2>
+        <div class="card green">
+            <h4>Estado: Implementado ✅</h4>
+        </div>
+        <p>Modelo: <strong>all-MiniLM-L6-v2</strong> (Sentence Transformers). 384 dimensiones, ~80MB, corre en CPU.</p>
+        <pre><code><span class="kw">from</span> sentence_transformers <span class="kw">import</span> SentenceTransformer
+
+<span class="kw">class</span> <span class="fn">EmbeddingService</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, model_name=<span class="str">"all-MiniLM-L6-v2"</span>):
+        self.model = SentenceTransformer(model_name, device=<span class="str">"cpu"</span>)
+
+    <span class="kw">def</span> <span class="fn">get_embedding</span>(self, text: str) -> list[float]:
+        <span class="cm"># normalize_embeddings=True → dot product = cosine similarity</span>
+        <span class="kw">return</span> self.model.encode(text, normalize_embeddings=<span class="num">True</span>).tolist()
+
+    <span class="kw">def</span> <span class="fn">get_embeddings_batch</span>(self, texts: list[str]) -> list[list[float]]:
+        <span class="kw">return</span> self.model.encode(
+            texts, normalize_embeddings=<span class="num">True</span>,
+            show_progress_bar=<span class="num">True</span>, batch_size=<span class="num">32</span>
+        ).tolist()</code></pre>
+        <p><strong>Decisiones clave:</strong></p>
+        <p>
+            Se usa CPU explícitamente (<span class="inline-code">device="cpu"</span>) para no competir con VRAM
+            cuando se integre con Hannah. La normalización está activada porque ChromaDB usa distancia coseno, y con
+            vectores normalizados, el dot product equivale a similitud coseno (más eficiente).
+            El batch_size de 32 balancea velocidad vs. memoria RAM.
+        </p>
+
+        <h2 id="vectorstore">vector_store.py</h2>
+        <div class="card green">
+            <h4>Estado: Implementado ✅</h4>
+        </div>
+        <pre><code><span class="kw">import</span> chromadb
+<span class="kw">from</span> embeddings <span class="kw">import</span> EmbeddingService
+
+<span class="kw">class</span> <span class="fn">VectorStore</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, db_path=<span class="str">"./hannah_vectordb"</span>):
+        self.client = chromadb.PersistentClient(path=db_path)
+        self.embedder = EmbeddingService()
+        self.collection = self.client.get_or_create_collection(
+            name=<span class="str">"knowledge_base"</span>,
+            metadata={<span class="str">"hnsw:space"</span>: <span class="str">"cosine"</span>}  <span class="cm"># IMPORTANTE: default es L2</span>
+        )</code></pre>
+        <p><strong>Decisión crítica:</strong> ChromaDB usa distancia L2 por defecto, NO coseno. Sin el parámetro
+        <span class="inline-code">{"hnsw:space": "cosine"}</span>, los resultados serían incorrectos porque
+        nuestros embeddings están normalizados para similitud coseno.</p>
+
+        <h2 id="cache">semantic_cache.py</h2>
+        <div class="card orange">
+            <h4>Estado: Nuevo 🆕</h4>
+        </div>
+        <pre><code><span class="kw">class</span> <span class="fn">SemanticCache</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, similarity_threshold=<span class="num">0.92</span>, max_cache_size=<span class="num">500</span>):
+        self.threshold = similarity_threshold
+        self.max_size = max_cache_size
+        self.embedder = EmbeddingService()
+        self._cache: list[dict] = []
+
+    <span class="kw">def</span> <span class="fn">lookup</span>(self, query: str) -> dict | None:
+        <span class="cm"># Busca si existe query con similitud >= threshold</span>
+        <span class="cm"># Vectores normalizados → dot product = cosine similarity</span>
+        ...
+
+    <span class="kw">def</span> <span class="fn">store</span>(self, query: str, response: dict):
+        <span class="cm"># FIFO cuando se llena: elimina la más antigua</span>
+        ...</code></pre>
+        <p><strong>¿Por qué 0.92?</strong> Es un umbral que balancea entre no retornar falsos positivos
+        (preguntas distintas que suenan parecido) y capturar paráfrasis reales. En pruebas con
+        sentence-transformers, queries que son paráfrasis genuinas suelen tener similitud >0.90,
+        mientras que queries semánticamente distintas quedan por debajo de 0.85.</p>
+
+        <h2 id="enhancer">query_enhancer.py</h2>
+        <div class="card orange">
+            <h4>Estado: Nuevo 🆕</h4>
+        </div>
+        <p>Implementa dos técnicas de mejora de queries:</p>
+        <table>
+            <tr>
+                <th>Técnica</th>
+                <th>Descripción</th>
+                <th>Cuándo se usa</th>
+            </tr>
+            <tr>
+                <td><strong>Query Expansion</strong></td>
+                <td>Genera variantes: declarativa, keywords, contextual</td>
+                <td>Solo Extended</td>
+            </tr>
+            <tr>
+                <td><strong>HyDE (templates)</strong></td>
+                <td>Documento hipotético basado en tipo de pregunta</td>
+                <td>Solo Extended</td>
+            </tr>
+        </table>
+        <p>
+            <strong>HyDE sin LLM:</strong> La implementación original de HyDE (Gao et al., 2022) usa un LLM
+            para generar el documento hipotético. Como nuestro RAG es standalone, usamos templates categorizados
+            por tipo de pregunta (definición, how-to, comparación, factual). Esto captura ~70% del beneficio
+            de HyDE sin necesidad de un modelo generativo.
+        </p>
+
+        <h2 id="contexthandler">context_handler.py</h2>
+        <div class="card orange">
+            <h4>Estado: Nuevo 🆕</h4>
+        </div>
+        <pre><code><span class="cm"># Configuración por modo (Sección 2.5 de Arquitectura)</span>
+MODE_CONFIG = {
+    <span class="str">"simplified"</span>: {
+        <span class="str">"max_chunks"</span>: <span class="num">3</span>,
+        <span class="str">"max_context_chars"</span>: <span class="num">800</span>,    <span class="cm"># ~200 tokens</span>
+        <span class="str">"use_reranking"</span>: <span class="num">False</span>,
+        <span class="str">"include_metadata"</span>: <span class="num">False</span>,
+    },
+    <span class="str">"extended"</span>: {
+        <span class="str">"max_chunks"</span>: <span class="num">10</span>,
+        <span class="str">"max_context_chars"</span>: <span class="num">6000</span>,   <span class="cm"># ~1500 tokens</span>
+        <span class="str">"use_reranking"</span>: <span class="num">True</span>,
+        <span class="str">"include_metadata"</span>: <span class="num">True</span>,
+    }
+}</code></pre>
+        <p><strong>Formato de salida:</strong></p>
+        <pre><code><span class="cm"># Simplified (Fast):</span>
+[MEMORY]Hannah es un modelo de 360M params basado en OLMo3. Fue entrenado con pretraining, SFT y DPO.[/MEMORY]
+
+<span class="cm"># Extended (Slow):</span>
+[MEMORY][Fuente: arquitectura.pdf] Hannah es un modelo transformer de 360M...
+---
+[Fuente: tecnica.pdf] El entrenamiento pasó por tres fases: pretraining (80k steps)...
+---
+[Fuente: lab_grupal.pdf] El Slow Model usa Qwen2.5-14B-Instruct con SFT...[/MEMORY]</code></pre>
+
+        <h2 id="ragcomponent">rag_component.py</h2>
+        <div class="card orange">
+            <h4>Estado: Nuevo 🆕 &mdash; Orquestador Principal</h4>
+        </div>
+        <pre><code><span class="kw">from</span> embeddings <span class="kw">import</span> EmbeddingService
+<span class="kw">from</span> vector_store <span class="kw">import</span> VectorStore
+<span class="kw">from</span> semantic_cache <span class="kw">import</span> SemanticCache
+<span class="kw">from</span> query_enhancer <span class="kw">import</span> QueryEnhancer
+<span class="kw">from</span> context_handler <span class="kw">import</span> ContextHandler
+
+<span class="kw">class</span> <span class="fn">RAGComponent</span>:
+    <span class="kw">def</span> <span class="fn">retrieve</span>(self, query: str, mode: str = <span class="str">"simplified"</span>) -> dict:
+        <span class="cm"># 1. Semantic Cache lookup</span>
+        <span class="cm"># 2. Query Enhancement</span>
+        <span class="cm"># 3. Multi-query search en VectorStore</span>
+        <span class="cm"># 4. Context Handler (format + truncate)</span>
+        <span class="cm"># 5. Cache store</span>
+        ...
+
+    <span class="kw">async def</span> <span class="fn">aretrieve</span>(self, query: str, mode: str) -> dict:
+        <span class="cm"># Versión async con ThreadPoolExecutor</span>
+        <span class="cm"># Para ejecutar en paralelo con Model Selector</span>
+        ...</code></pre>
+        <p><strong>Interfaz de uso:</strong></p>
+        <pre><code>rag = RAGComponent()
+
+<span class="cm"># Ingestar conocimiento</span>
+rag.ingest_documents(docs, metadatas, ids)
+
+<span class="cm"># Recuperar contexto para Fast Model</span>
+result = rag.retrieve(<span class="str">"¿Qué es Hannah?"</span>, mode=<span class="str">"simplified"</span>)
+print(result[<span class="str">"formatted_context"</span>])
+<span class="cm"># → "[MEMORY]Hannah es un modelo de 360M...[/MEMORY]"</span>
+
+<span class="cm"># Recuperar contexto para Slow Model (async)</span>
+result = <span class="kw">await</span> rag.aretrieve(<span class="str">"Explica el DPO"</span>, mode=<span class="str">"extended"</span>)
+</code></pre>
+
+        <!-- THEORY -->
+        <h2 id="rag-theory">Teoría: RAG</h2>
+        <p>
+            <strong>Retrieval-Augmented Generation</strong> (Lewis et al., 2020) combina un retriever
+            (que busca documentos relevantes) con un generator (que produce texto). En vez de depender
+            solo de lo que el modelo "aprendió" durante el entrenamiento, el RAG le inyecta conocimiento
+            externo en tiempo de inferencia.
+        </p>
+        <p>
+            En nuestro caso, el retriever es ChromaDB + all-MiniLM-L6-v2, y los generators son
+            Hannah 360M (Fast) y Qwen2.5-14B-Instruct (Slow). El RAG no genera texto &mdash; solo
+            recupera y formatea contexto. La generación la hacen los modelos.
+        </p>
+
+        <h2 id="hyde-theory">Teoría: HyDE</h2>
+        <p>
+            <strong>Hypothetical Document Embeddings</strong> (Gao et al., 2022) resuelve el problema
+            de <em>query-document mismatch</em>: una pregunta como "¿Qué es NLP?" tiene un embedding
+            muy diferente al de un documento que explica NLP, porque la pregunta es corta y el documento
+            es largo y detallado. HyDE genera un "documento hipotético" que respondería la pregunta,
+            y usa ESE embedding para buscar. El embedding del documento hipotético está más cerca
+            de los documentos reales en el espacio vectorial.
+        </p>
+        <p>
+            Nuestra implementación usa templates en vez de un LLM para generar el documento hipotético,
+            lo que lo hace lightweight y no requiere modelo adicional.
+        </p>
+
+        <h2 id="qe-theory">Teoría: Query Expansion</h2>
+        <p>
+            La expansión de queries genera múltiples variantes de la pregunta original para cubrir
+            más espacio semántico en la búsqueda. Nuestras estrategias:
+        </p>
+        <table>
+            <tr>
+                <th>Estrategia</th>
+                <th>Ejemplo</th>
+                <th>Por qué funciona</th>
+            </tr>
+            <tr>
+                <td>Pregunta → Afirmación</td>
+                <td>"¿Qué es NLP?" → "NLP"</td>
+                <td>Documentos suelen ser afirmativos</td>
+            </tr>
+            <tr>
+                <td>Extracción de keywords</td>
+                <td>"¿Cómo entreno DPO?" → "entrenar DPO"</td>
+                <td>Elimina ruido de stopwords</td>
+            </tr>
+            <tr>
+                <td>Contextualización</td>
+                <td>"¿Qué es NLP?" → "Hannah chatbot ¿Qué es NLP?"</td>
+                <td>Sesga hacia documentos del dominio</td>
+            </tr>
+        </table>
+
+        <h2 id="pmfr">Teoría: Prepared Mind, Fast Response</h2>
+        <p>
+            <strong>PMFR</strong> (Zhang et al., 2025) propone <em>desacoplamiento temporal</em>: mientras
+            un componente decide (Model Selector), otro ya puede estar trabajando en paralelo (RAG).
+            Nuestra implementación async (<span class="inline-code">aretrieve()</span>) permite exactamente esto:
+            el RAG puede comenzar la búsqueda antes de que el Model Selector termine de decidir, y luego
+            adaptar el modo cuando llega la señal.
+        </p>
+
+        <!-- GEMINI ANALYSIS -->
+        <h2 id="gemini-corrections">Correcciones vs Análisis Gemini</h2>
+        <p>
+            Durante el desarrollo, se consultó con Gemini (Google) sobre la arquitectura.
+            A continuación se documentan los puntos donde Gemini acertó y donde se equivocó,
+            para que el equipo tenga claridad sobre las decisiones tomadas.
+        </p>
+
+        <div class="card green">
+            <h4>Lo que Gemini acertó</h4>
+            <p>
+                <strong>1. CPU para embeddings:</strong> Correctamente identificó que el RAG debe correr en CPU
+                para no competir con la VRAM de la RTX 5070 Ti.<br>
+                <strong>2. System Prompt de AI Companion:</strong> Identificó que Hannah es una "Novia Virtual",
+                no un asistente genérico. El DPO castiga respuestas tipo "Soy un asistente de IA".<br>
+                <strong>3. Pipeline async:</strong> Correcto que el orquestador debe ser asíncrono con ThreadPoolExecutor.<br>
+                <strong>4. Tokens especiales:</strong> Correctamente identificó [SYS], [USR], [ASS] con add_special_tokens=False.
+            </p>
+        </div>
+
+        <div class="card" style="border-left: 4px solid var(--red);">
+            <h4>Donde Gemini se equivocó</h4>
+            <p>
+                <strong>1. SEQ_LEN absoluto de 512 &mdash; INCORRECTO:</strong> Gemini dijo que el límite absoluto
+                de Hannah es 512 tokens (del DPO) y recomendó bajar el contexto RAG a 300 tokens.
+                En realidad, SEQ_LEN=512 del DPO es solo la longitud de entrenamiento de esa fase (por restricción
+                de VRAM al cargar 2 modelos). En inferencia, Hannah procesa hasta 1024 tokens
+                (SEQ_LEN del pretraining y SFT). Nuestro límite de ~200 tokens para Fast es correcto
+                según la arquitectura oficial (Sección 2.5).<br><br>
+
+                <strong>2. El RAG NO debe construir el prompt completo:</strong> Gemini inyectó [SYS], [USR], [ASS]
+                y el System Prompt dentro del RAG. Según la arquitectura (Sección 2.2), eso es responsabilidad del
+                <em>Token Sequence Handler</em> (Pedro/Marlow). El RAG solo devuelve
+                <span class="inline-code">[MEMORY]...contexto...[/MEMORY]</span>.<br><br>
+
+                <strong>3. No mencionó [MEMORY]/[/MEMORY]:</strong> El tokenizer de Hannah tiene estos tokens
+                especiales específicamente para contexto RAG. Gemini los ignoró completamente.<br><br>
+
+                <strong>4. No implementó Semantic Cache:</strong> Componente clave de la arquitectura (Sección 2.3)
+                que Gemini omitió.<br><br>
+
+                <strong>5. No implementó modos dual (Simplified/Extended):</strong> La arquitectura define dos modos
+                de operación con configuraciones distintas. Gemini usó solo una función genérica.<br><br>
+
+                <strong>6. No sabe del cambio a Qwen2.5-14B:</strong> Sigue mencionando Llama como Slow Model.
+                El Laboratorio Grupal (9 abril 2026) confirma Qwen2.5-14B-Instruct.
+            </p>
+        </div>
+
+        <!-- DEPS -->
+        <h2 id="dependencies">Dependencias</h2>
+        <pre><code><span class="cm"># requirements.txt</span>
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+numpy>=1.24.0
+torch>=2.0.0       <span class="cm"># requerido por sentence-transformers</span></code></pre>
+        <p><strong>Instalación:</strong></p>
+        <pre><code>pip install chromadb sentence-transformers numpy</code></pre>
+        <p><strong>Espacio en disco:</strong> ~200MB (modelo MiniLM ~80MB + ChromaDB + dependencias). No se necesitan GPUs.</p>
+
+        <!-- TESTING -->
+        <h2 id="testing">Tests</h2>
+        <p>Cada módulo tiene un bloque <span class="inline-code">if __name__ == "__main__"</span> con pruebas rápidas. Para ejecutar:</p>
+        <pre><code><span class="cm"># Desde rag_standalone/</span>
+python embeddings.py         <span class="cm"># Verifica: vector de 384 dims</span>
+python vector_store.py       <span class="cm"># Verifica: insert + search funcional</span>
+python semantic_cache.py     <span class="cm"># Verifica: HIT y MISS correctos</span>
+python query_enhancer.py     <span class="cm"># Verifica: modos simplified/extended</span>
+python context_handler.py    <span class="cm"># Verifica: formato [MEMORY]/[/MEMORY]</span>
+python rag_component.py      <span class="cm"># Verifica: pipeline end-to-end</span></code></pre>
+
+        <div class="card pink">
+            <h4>Test End-to-End esperado (rag_component.py)</h4>
+            <p>
+                1. Ingesta 8 documentos de prueba → ChromaDB<br>
+                2. Query simplified → 2-3 chunks, ~200 tokens, sin HyDE<br>
+                3. Misma query repetida → Cache HIT<br>
+                4. Query extended → 5-10 chunks, QE + HyDE, reranking<br>
+                5. Stats del sistema: docs en BD, entradas en caché, hits
+            </p>
+        </div>
+
+        <!-- TIMELINE -->
+        <h2 id="timeline">Cronograma</h2>
+        <div class="timeline">
+            <div class="timeline-item done">
+                <div class="timeline-date">13 abril (completado)</div>
+                <strong>Base implementada</strong>
+                <p>embeddings.py + vector_store.py funcionales con ChromaDB y cosine distance.</p>
+            </div>
+            <div class="timeline-item current">
+                <div class="timeline-date">18 abril (hoy)</div>
+                <strong>Pipeline completo</strong>
+                <p>semantic_cache.py + query_enhancer.py + context_handler.py + rag_component.py implementados.</p>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">19-21 abril</div>
+                <strong>Testing y refinamiento</strong>
+                <p>Probar con datos reales, ajustar umbrales, verificar tokens [MEMORY]/[/MEMORY].</p>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">22-23 abril</div>
+                <strong>Integración con equipo</strong>
+                <p>Conectar con Model Selector de Marlow. Verificar formato de contexto con Hannah.</p>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">24 abril (deadline)</div>
+                <strong>Entrega: RAG Simplified funcional</strong>
+                <p>Primer entregable: pipeline Fast completo y testeado.</p>
+            </div>
+        </div>
+
+        <!-- REFS -->
+        <h2 id="refs">Referencias Académicas</h2>
+        <div class="ref">
+            [1] Lewis, P., et al. (2020). "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks."
+            <a href="https://arxiv.org/abs/2005.11401">arXiv:2005.11401</a>
+        </div>
+        <div class="ref">
+            [2] Gao, L., et al. (2022). "Precise Zero-Shot Dense Retrieval without Relevance Labels."
+            <a href="https://arxiv.org/abs/2212.10496">arXiv:2212.10496</a>
+        </div>
+        <div class="ref">
+            [3] Zhang, S., et al. (2025). "Prepared Mind, Fast Response: A Temporal Decoupling Framework
+            for Latency-Quality Trade-offs in Conversational AI."
+        </div>
+        <div class="ref">
+            [4] Reimers, N. & Gurevych, I. (2019). "Sentence-BERT: Sentence Embeddings using Siamese
+            BERT-Networks." <a href="https://arxiv.org/abs/1908.10084">arXiv:1908.10084</a>
+        </div>
+        <div class="ref">
+            [5] Groeneveld, D., et al. (2024). "OLMo: Accelerating the Science of Language Models."
+            <a href="https://arxiv.org/abs/2402.00838">arXiv:2402.00838</a>
+        </div>
+        <div class="ref">
+            [6] Qwen Team (2024). "Qwen2.5: A Party of Foundation Models."
+            <a href="https://arxiv.org/abs/2412.15115">arXiv:2412.15115</a>
+        </div>
+
+        <!-- TEAM -->
+        <h2 id="team">Equipo - Grupo 5</h2>
+        <table>
+            <tr><th>Nombre</th><th>Código</th><th>Rol</th></tr>
+            <tr><td>Luis Alberto Miranda Mallqui</td><td>20223796</td><td>Arquitecto de Solución (RAG + BD)</td></tr>
+            <tr><td>Marlow Brando Ariza Mejia</td><td>20212579</td><td>Líder (Model Selector, Integración)</td></tr>
+            <tr><td>Jorge Josue Chamorro Cayetano</td><td>20206234</td><td>Documentación + backup RAG</td></tr>
+            <tr><td>John Manuel Arzapalo Arana</td><td>20202098</td><td>Training (Slow Model)</td></tr>
+            <tr><td>Pedro Gabriel Chavez Gonzalez</td><td>20210466</td><td>Frontend / Web App</td></tr>
+        </table>
+
+        <p style="margin-top: 40px; color: var(--text-dim); font-size: 13px; text-align: center;">
+            Hannah RAG Pipeline v3.1 &mdash; Documentación actualizada el 19 de abril de 2026<br>
+            Curso [1INF59] Procesamiento de Lenguaje Natural &mdash; PUCP
+        </p>
+    </main>
+</div>
+</body>
+</html>

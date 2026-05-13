@@ -111,3 +111,34 @@ class EmbeddingService:
             show_progress_bar=True,
             batch_size=32
         ).tolist()
+
+# ============================================================================
+# PRUEBA RÁPIDA
+# ============================================================================
+# Ejecutar: python embeddings.py
+# Resultado esperado: "Vector generado con 384 dimensiones."
+# Si sale 384, el modelo está funcionando correctamente.
+# ============================================================================
+if __name__ == "__main__":
+    print("=" * 50)
+    print("  Test: EmbeddingService")
+    print("=" * 50)
+
+    embedder = EmbeddingService()
+
+    # Test 1: Un solo embedding
+    vector = embedder.get_embedding("¿Qué es el procesamiento de lenguaje natural?")
+    print(f"\n[Test 1] Vector generado con {len(vector)} dimensiones.")
+    print(f"  Primeros 5 valores: {vector[:5]}")
+
+    # Test 2: Batch de embeddings
+    textos = ["Hannah es una IA", "El cielo es azul", "Procesamiento de lenguaje"]
+    vectores = embedder.get_embeddings_batch(textos)
+    print(f"\n[Test 2] {len(vectores)} vectores generados en batch.")
+
+    # Test 3: Verificar que los vectores están normalizados (norma ≈ 1.0)
+    import numpy as np
+    norma = np.linalg.norm(vector)
+    print(f"\n[Test 3] Norma del vector: {norma:.6f} (debe ser ≈ 1.000000)")
+
+    print("\nTodos los tests pasaron." if len(vector) == 384 and abs(norma - 1.0) < 0.01 else "\n✗ FALLO")

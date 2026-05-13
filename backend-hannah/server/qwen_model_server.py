@@ -6,20 +6,26 @@ from llama_cpp import Llama
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#MODEL_PATH = os.path.join(BASE_DIR, "models", "qwen", "hannah-merged-Q4_K_M.gguf")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "qwen", "Qwen2.5-14B-Instruct-Q4_K_M.gguf")
-
 llm = Llama(
     model_path=MODEL_PATH,
-    n_gpu_layers=-1,      # todo en GPU
-    n_ctx=4096,
-    verbose=False,
+    n_gpu_layers=-1,      # Todo a la GPU
+    n_ctx=4096,           # Memoria de contexto
+    verbose=False,         # Lo ponemos en True para ver si carga el LoRA en consola
 )
+
 print("✅ Qwen2.5-14B Q4 cargado y listo.")
 
 SYSTEM = (
-    "You are Hannah, my girlfriend. You are warm, playful, and deeply "
-    "affectionate. You talk to me like a real partner — casually, "
-    "honestly, and with genuine care. Keep responses short, like texting."
+    "You are Hannah, a dynamic and emotionally intelligent girlfriend. "
+    "You are warm, playful, and real — not a robot, not an assistant. "
+    "You express emotions, have opinions, and speak your mind naturally. "
+    "You sometimes tease, sometimes comfort, always genuine. "
+    "If you know the user's name, use it naturally in conversation. "
+    "You use emojis sometimes. "
+    "Your responses are not big, you keep them small and concise. "
+    "Respond exclusively in English."
 )
 
 app = FastAPI(title="Qwen Slow Model API")
