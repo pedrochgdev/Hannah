@@ -40,7 +40,8 @@ from api.schemas import (
     TTSRequest,
 )
 from config import settings
-from core.model_selector import ModelSelector, ModelSignal
+from core.model_selector import ModelSignal
+from core.model_selector_v2 import ModelSelectorV2
 from core.semantic_cache import SemanticCache
 from core.token_handler import TokenHandler
 from rag.rag_component import RAGComponent
@@ -56,7 +57,8 @@ router = APIRouter()
 
 _token_handler  = TokenHandler()
 _semantic_cache = SemanticCache()
-_model_selector = ModelSelector()
+_model_selector = ModelSelectorV2()
+_session_signals: dict[str, str] = {}
 _RAG_DB = os.path.join(os.path.dirname(__file__), "..", "rag", "hannah_knowledge")
 _rag = RAGComponent(db_path=_RAG_DB)
 
@@ -152,10 +154,12 @@ async def chat(request: ChatRequest) -> ChatResponse:
         )
 
     # Step 3 — Model routing decision
+    context["prev_signal"] = _session_signals.get(request.session_id, "fast")
     signal, confidence = _model_selector.select(
         prompt=request.prompt,
         context=context,
     )
+    _session_signals[request.session_id] = signal.value
 
     # Step 3.5 — RAG retrieval ← NUEVO
     rag_mode = "extended" if signal == ModelSignal.SLOW else "simplified"
@@ -192,7 +196,43 @@ async def chat(request: ChatRequest) -> ChatResponse:
         turns_in_context=context["turns_used"],
     )
 
+@router.post("/chat/regenerate", response_model=ChatResponse)
+async def regenerate(request: ChatRequest) -> ChatResponse:
+    # Quitar el último turno — es la respuesta que queremos reemplazar
+    _token_handler.pop_last_turn(request.session_id)
 
+    # Construir contexto sin ese último turno
+    context = _token_handler.build_context(
+        session_id=request.session_id,
+        current_prompt=request.prompt,
+    )
+
+    # RAG en modo extended siempre
+    rag_result = _rag.retrieve(request.prompt, mode="extended")
+    rag_context = rag_result["formatted_context"]
+
+    # Directo al slow model
+    response_text = await _call_model(ModelSignal.SLOW, context, rag_context)
+
+    # Guardar nuevo turno
+    _token_handler.record_turn(
+        session_id=request.session_id,
+        user_message=request.prompt,
+        assistant_message=response_text,
+    )
+
+    _session_signals[request.session_id] = ModelSignal.SLOW.value
+
+    return ChatResponse(
+        session_id=request.session_id,
+        response=response_text,
+        model_used="slow",
+        cache_hit=False,
+        cache_similarity=None,
+        model_signal="slow",
+        selector_confidence=1.0,
+        turns_in_context=context["turns_used"],
+    )
 # ── Health endpoint ───────────────────────────────────────────────────
 
 @router.get("/health", response_model=HealthResponse)
@@ -216,6 +256,7 @@ async def get_session(session_id: str) -> SessionHistoryResponse:
 @router.delete("/session/{session_id}", status_code=200)
 async def clear_session(session_id: str) -> dict:
     _token_handler.clear_session(session_id)
+    _session_signals.pop(session_id, None)
     return {}
 
 # ── Internal helper ───────────────────────────────────────────────────

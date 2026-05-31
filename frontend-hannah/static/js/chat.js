@@ -9,6 +9,8 @@ let conversationId = null;
 let isWaiting = false;
 let isVoiceEnabled = true;
 let isContinuousVoiceMode = false;
+let lastUserPrompt = null;
+let canRegenerate = false;
 // STT State
 let mediaRecorder;
 let audioChunks = [];
@@ -264,6 +266,9 @@ async function sendMessage() {
     const text = messageInput.value.trim();
     if (!text || isWaiting) return;
 
+    lastUserPrompt = text;        // ← nuevo
+    canRegenerate = false;        // ← nuevo — deshabilita mientras espera
+    removeRegenButton();
     if (currentConversation.length === 0) {
         welcomeScreen.classList.add('hidden');
         chatMessages.classList.add('active');
@@ -300,7 +305,8 @@ async function sendMessage() {
             const botMsg = { role: 'assistant', content: data.response, time: new Date().toISOString() };
             currentConversation.push(botMsg);
             appendMessage('bot', data.response);
-            
+            canRegenerate = true;          // ← nuevo
+            addRegenButton();    
             // REPRODUCIR AUDIO DE HANNAH
             playHannahVoice(data.response);
         }
@@ -316,12 +322,16 @@ async function sendMessage() {
 }
 
 function appendMessage(role, text) {
+    const oldRegen = document.getElementById('btnRegen');
+    if (oldRegen) oldRegen.remove();
+    const prevBot = chatMessages.querySelector('.message.bot[data-last]');
+    if (prevBot) prevBot.removeAttribute('data-last');
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' });
 
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${role === 'user' ? 'user' : 'bot'}`;
-
+    if (role === 'bot') msgDiv.setAttribute('data-last', 'true'); 
     const avatarIcon = role === 'user' ? 'person' : 'favorite';
 
     const bubbleContent = role === 'user' 
@@ -400,6 +410,78 @@ function saveCurrentConversation() {
 function loadHistory() {
     const history = getStoredHistory();
     renderHistory(history);
+}
+
+// ---- Regenerate ----
+function addRegenButton() {
+    removeRegenButton();
+    if (!canRegenerate) return;
+
+    const lastBot = chatMessages.querySelector('.message.bot[data-last]');
+    if (!lastBot) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'btnRegen';
+    btn.className = 'btn-regen';
+    btn.innerHTML = '<span class="material-icons-round">refresh</span>';
+    btn.title = 'Regenerate response';
+    btn.addEventListener('click', regenerateResponse);
+
+    lastBot.querySelector('.message-content').appendChild(btn);
+}
+
+function removeRegenButton() {
+    const btn = document.getElementById('btnRegen');
+    if (btn) btn.remove();
+}
+
+async function regenerateResponse() {
+    if (!lastUserPrompt || isWaiting) return;
+
+    canRegenerate = false;
+    removeRegenButton();
+
+    // Quitar último mensaje del bot del DOM y de la conversación
+    const lastBot = chatMessages.querySelector('.message.bot[data-last]');
+    if (lastBot) lastBot.remove();
+    currentConversation = currentConversation.filter((_, i) =>
+        !(i === currentConversation.length - 1 && currentConversation[i].role === 'assistant')
+    );
+
+    isWaiting = true;
+    typingIndicator.classList.add('active');
+    scrollToBottom();
+
+    try {
+        const response = await fetch('/api/v1/chat/regenerate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: sessionId,
+                prompt: lastUserPrompt,
+            }),
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            appendMessage('bot', 'Sorry, there was an error: ' + data.error);
+        } else {
+            const botMsg = { role: 'assistant', content: data.response, time: new Date().toISOString() };
+            currentConversation.push(botMsg);
+            appendMessage('bot', data.response);
+            canRegenerate = true;
+            addRegenButton();
+            playHannahVoice(data.response);
+        }
+    } catch (err) {
+        appendMessage('bot', "Couldn't connect to the server.");
+    }
+
+    typingIndicator.classList.remove('active');
+    isWaiting = false;
+    saveCurrentConversation();
+    scrollToBottom();
 }
 
 function renderHistory(history) {

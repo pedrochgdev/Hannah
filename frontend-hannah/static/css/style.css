@@ -914,3 +914,29 @@ body {
 .bubble-markdown p:last-child {
     margin-bottom: 0;
 }
+
+.btn-regen {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px;
+    margin-top: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    align-self: flex-start;  /* ← esto limita el ancho al contenido */
+    width: 28px;
+    height: 28px;
+}
+
+.btn-regen:hover {
+    color: var(--primary);
+    background: rgba(233, 30, 99, 0.08);
+}
+
+.btn-regen .material-icons-round {
+    font-size: 16px;
+}

@@ -23,7 +23,7 @@ N_HEADS    = 16
 N_LAYERS   = 24
 
 # Unimos la ruta base con las carpetas específicas
-CHECKPOINT = os.path.join(BASE_DIR, "model", "hannah_personality_final.pt")
+CHECKPOINT = os.path.join(BASE_DIR, "model", "hannah_personality_v2_final.pt")
 TOK_PATH   = os.path.join(BASE_DIR, "tokenizer", "hannah_tok")
 
 device = torch.device("cuda")
@@ -73,7 +73,9 @@ async def generate_text(req: GenerateRequest):
     user_msg_temp = None
     
     for msg in req.history:
-        if msg.get("role") == "user":
+        if "user" in msg and "assistant" in msg:
+            formatted_history.append((msg["user"], msg["assistant"]))
+        elif msg.get("role") == "user":
             user_msg_temp = msg.get("content")
         elif msg.get("role") == "assistant" and user_msg_temp:
             formatted_history.append((user_msg_temp, msg.get("content")))

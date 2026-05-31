@@ -16,29 +16,40 @@
 #   5. SemanticCache   → Guardar resultado para futuras consultas
 # DIAGRAMA DE FLUJO COMPLETO:
 # ============================
-#   ┌───────────────────────────────────────────────┐
-#   │              RAGComponent.retrieve()           │
-#   │                                                │
-#   │  1. SemanticCache.lookup(query)                │
-#   │       │                                        │
-#   │     [HIT] ───→ return cached response          │
-#   │       │                                        │
-#   │     [MISS]                                     │
-#   │       ↓                                        │
-#   │  2. QueryEnhancer.enhance(query, mode)         │
-#   │       ↓                                        │
-#   │  3. VectorStore.search() × N queries           │
-#   │     (multi-query: busca con cada variante)     │
-#   │       ↓                                        │
-#   │  4. ContextHandler.process(results, mode)      │
-#   │     (selecciona, rerankea, trunca, formatea)   │
-#   │       ↓                                        │
-#   │  5. SemanticCache.store(query, response)       │
-#   │       ↓                                        │
-#   │  return {"formatted_context": "[MEMORY]...",   │
-#   │          "raw_chunks": [...],                  │
-#   │          "scores": [...], ...}                 │
-#   └───────────────────────────────────────────────┘
+#   ┌─────────────────────────────────────────────────┐
+#   │              RAGComponent.retrieve()             │
+#   │                                                  │
+#   │  0. Pre-filtro: len(query) < 3?                  │
+#   │       │                                          │
+#   │     [SÍ] ───→ return vacío (skip embeddings)     │
+#   │       │                                          │
+#   │     [NO]                                         │
+#   │       ↓                                          │
+#   │  1. SemanticCache.lookup(query)                  │
+#   │       │                                          │
+#   │     [HIT] ───→ return cached response            │
+#   │       │                                          │
+#   │     [MISS]                                       │
+#   │       ↓                                          │
+#   │  2. QueryEnhancer.enhance(query, mode)           │
+#   │       ↓                                          │
+#   │  3. VectorStore.search() × N queries             │
+#   │     (multi-query: busca con cada variante)       │
+#   │       ↓                                          │
+#   │  3.5 Filtro de relevancia: best_score < 0.35?    │
+#   │       │                                          │
+#   │     [SÍ] ───→ return vacío (no contexto)         │
+#   │       │                                          │
+#   │     [NO]                                         │
+#   │       ↓                                          │
+#   │  4. ContextHandler.process(results, mode)        │
+#   │     (selecciona, rerankea, trunca, formatea)     │
+#   │       ↓                                          │
+#   │  5. SemanticCache.store(query, response)         │
+#   │       ↓                                          │
+#   │  return {"formatted_context": "[MEMORY]...",     │
+#   │          "raw_chunks": [...], "timing": {...}}   │
+#   └─────────────────────────────────────────────────┘
 # INTERFAZ DE USO:
 # ================
 #   rag = RAGComponent()
@@ -69,6 +80,8 @@
 # ============================================================================
 
 import asyncio
+import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from rag.embeddings import EmbeddingService
@@ -76,6 +89,19 @@ from rag.vector_store import VectorStore
 from rag.semantic_cache import SemanticCache
 from rag.query_enhancer import QueryEnhancer
 from rag.context_handler import ContextHandler
+
+# ─── Logger estructurado ───
+# Permite controlar verbosidad desde el backend sin tocar código:
+#   logging.getLogger("hannah.rag").setLevel(logging.WARNING)  # producción
+#   logging.getLogger("hannah.rag").setLevel(logging.DEBUG)    # desarrollo
+logger = logging.getLogger("hannah.rag")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        "[RAG %(levelname)s] %(message)s"
+    ))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 class RAGComponent:
@@ -87,6 +113,28 @@ class RAGComponent:
         context = result["formatted_context"]
         # → Inyectar `context` en el prompt del modelo
     """
+
+    # ─── UMBRAL MÍNIMO DE RELEVANCIA ───
+    # Si el MEJOR chunk tiene score (1 - distancia) menor a este valor,
+    # NO se inyecta contexto. Esto evita que mensajes casuales como
+    # "hi", "love you", "haha" reciban contexto irrelevante del RAG
+    # que confunde al modelo.
+    #
+    # Valores de referencia empíricos:
+    #   "what's your favorite movie?" vs doc de película → score ~0.60
+    #   "how old are you?"            vs doc de birthday → score ~0.45
+    #   "hi"                          vs cualquier doc   → score ~0.15
+    #   "love you"                    vs cualquier doc   → score ~0.20
+    #
+    # Con umbral 0.35:
+    #   - Preguntas relevantes (>0.35) → SÍ reciben contexto
+    #   - Chat casual (<0.35) → NO recibe contexto (Hannah responde libre)
+    MIN_RELEVANCE_SCORE = 0.35
+
+    # ─── LONGITUD MÍNIMA DE QUERY ───
+    # Queries de 1-2 caracteres ("hi", "k", "ok") nunca son preguntas
+    # de conocimiento. Cortamos antes de gastar cómputo en embeddings.
+    MIN_QUERY_LENGTH = 3
 
     def __init__(self, db_path: str = "./hannah_vectordb",
                  cache_threshold: float = 0.92,
@@ -101,7 +149,7 @@ class RAGComponent:
             cache_size: Tamaño máximo del caché semántico.
                        Default: 500 entradas (~750KB de RAM)
         """
-        print("[RAG] Inicializando componentes...")
+        logger.info("Inicializando componentes...")
 
         # ─── Componente 1: Base de datos vectorial ───
         # Almacena los documentos como vectores en ChromaDB
@@ -127,7 +175,7 @@ class RAGComponent:
         # Más workers no ayudan porque ambos usan CPU intensivamente
         self._executor = ThreadPoolExecutor(max_workers=2)
 
-        print("[RAG] Todos los componentes inicializados correctamente.")
+        logger.info("Todos los componentes inicializados correctamente.")
 
     def retrieve(self, query: str, mode: str = "simplified") -> dict:
         """
@@ -154,7 +202,31 @@ class RAGComponent:
                 "enhanced_query": {...}  # Info de QueryEnhancer
             }
         """
-        print(f"\n[RAG] retrieve(mode={mode}): '{query[:60]}...'")
+        t_start = time.perf_counter()
+        timing = {}
+        logger.info(f"retrieve(mode={mode}): '{query[:60]}...'")
+
+        # ═══════════════════════════════════════════════════
+        # PASO 0: Pre-filtro de queries triviales
+        # ═══════════════════════════════════════════════════
+        # Queries vacías o muy cortas (1-2 chars) nunca necesitan RAG.
+        # Cortamos ANTES de computar embeddings → ahorra ~30ms por request.
+        clean_query = query.strip()
+        if len(clean_query) < self.MIN_QUERY_LENGTH:
+            logger.info(f"Query muy corta ({len(clean_query)} chars) → skip RAG")
+            return {
+                "formatted_context": "[MEMORY][/MEMORY]",
+                "raw_chunks": [],
+                "scores": [],
+                "num_chunks": 0,
+                "approx_tokens": 0,
+                "cache_hit": False,
+                "enhanced_query": None,
+                "filtered_by_relevance": True,
+                "best_relevance_score": 0.0,
+                "skip_reason": "query_too_short",
+                "timing": {"total_ms": 0}
+            }
 
         # ═══════════════════════════════════════════════════
         # PASO 1: Verificar Semantic Cache
@@ -162,53 +234,147 @@ class RAGComponent:
         # Si una query similar ya fue procesada (similitud >= 0.92),
         # devolvemos el resultado cacheado sin buscar en ChromaDB.
         # Esto ahorra ~50-100ms por request.
+        t0 = time.perf_counter()
         cached = self.cache.lookup(query)
+        timing["cache_lookup_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         if cached is not None:
             cached["cache_hit"] = True
+            cached["timing"] = timing
             return cached
 
         # ═══════════════════════════════════════════════════
-        # PASO 2: Mejorar la query
+        # TRY-EXCEPT: Degradación graceful
         # ═══════════════════════════════════════════════════
-        # Simplified: solo limpia → 1 query de búsqueda
-        # Extended: limpia + expande + HyDE → 4-5 queries
-        enhanced = self.query_enhancer.enhance(query, mode=mode)
-        search_queries = enhanced["search_queries"]
-        print(f"[RAG] Queries de búsqueda generadas: {len(search_queries)}")
+        # Si cualquier componente falla (ChromaDB caído, embedding model
+        # corrupto, etc.), el RAG retorna contexto vacío en vez de
+        # crashear todo el backend. Hannah puede responder sin contexto.
+        try:
+            # ═══════════════════════════════════════════════════
+            # PASO 2: Mejorar la query
+            # ═══════════════════════════════════════════════════
+            # Simplified: solo limpia → 1 query de búsqueda
+            # Extended: limpia + expande + HyDE → 4-5 queries
+            t0 = time.perf_counter()
+            enhanced = self.query_enhancer.enhance(query, mode=mode)
+            search_queries = enhanced["search_queries"]
+            timing["query_enhance_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+            logger.debug(f"Queries de búsqueda generadas: {len(search_queries)}")
 
-        # ═══════════════════════════════════════════════════
-        # PASO 3: Buscar en VectorStore (ChromaDB)
-        # ═══════════════════════════════════════════════════
-        # Simplified: busca con 1 query, trae 3 resultados
-        # Extended: busca con 4-5 queries, trae 10 resultados, fusiona
-        n_results = 3 if mode == "simplified" else 10
-        all_results = self._multi_query_search(search_queries, n_results)
+            # ═══════════════════════════════════════════════════
+            # PASO 3: Buscar en VectorStore (ChromaDB)
+            # ═══════════════════════════════════════════════════
+            # Simplified: busca con 1 query, trae 3 resultados
+            # Extended: busca con 4-5 queries, trae 10 resultados, fusiona
+            t0 = time.perf_counter()
+            n_results = 3 if mode == "simplified" else 10
+            all_results = self._multi_query_search(search_queries, n_results)
+            timing["vector_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
-        # ═══════════════════════════════════════════════════
-        # PASO 4: Procesar con ContextHandler
-        # ═══════════════════════════════════════════════════
-        # Selecciona mejores chunks, rerankea (Extended), trunca al
-        # límite de tokens, formatea con [MEMORY]/[/MEMORY]
-        context_result = self.context_handler.process(
-            search_results=all_results,
-            query=query,
-            mode=mode
-        )
+            # ═══════════════════════════════════════════════════
+            # PASO 3.5: Filtro de relevancia mínima
+            # ═══════════════════════════════════════════════════
+            # ChromaDB SIEMPRE devuelve resultados, incluso para "hi" o "love you".
+            # Aquí verificamos si el MEJOR resultado es realmente relevante.
+            # Score = 1 - distancia (cosine). Si el mejor score < MIN_RELEVANCE_SCORE,
+            # significa que NINGÚN documento es relevante → no inyectar contexto.
+            distances = all_results.get("distances", [[]])[0]
+            if distances:
+                best_distance = min(distances)
+                best_score = 1.0 - best_distance
+                logger.info(f"Mejor score de relevancia: {best_score:.3f} "
+                           f"(umbral: {self.MIN_RELEVANCE_SCORE})")
 
-        # Añadir metadata extra
-        context_result["cache_hit"] = False
-        context_result["enhanced_query"] = enhanced
+                if best_score < self.MIN_RELEVANCE_SCORE:
+                    logger.info(f"Score {best_score:.3f} < {self.MIN_RELEVANCE_SCORE} → "
+                               f"contexto NO relevante, retornando vacío")
+                    timing["total_ms"] = round((time.perf_counter() - t_start) * 1000, 1)
+                    empty_result = {
+                        "formatted_context": "[MEMORY][/MEMORY]",
+                        "raw_chunks": [],
+                        "scores": [],
+                        "num_chunks": 0,
+                        "approx_tokens": 0,
+                        "cache_hit": False,
+                        "enhanced_query": enhanced,
+                        "filtered_by_relevance": True,
+                        "best_relevance_score": best_score,
+                        "timing": timing
+                    }
+                    # Cachear también el resultado vacío para que
+                    # queries similares sean HIT directo
+                    self.cache.store(query, empty_result)
+                    return empty_result
+            else:
+                # Sin resultados de ChromaDB → vacío
+                logger.warning("ChromaDB no devolvió resultados")
+                timing["total_ms"] = round((time.perf_counter() - t_start) * 1000, 1)
+                return {
+                    "formatted_context": "[MEMORY][/MEMORY]",
+                    "raw_chunks": [],
+                    "scores": [],
+                    "num_chunks": 0,
+                    "approx_tokens": 0,
+                    "cache_hit": False,
+                    "enhanced_query": enhanced,
+                    "filtered_by_relevance": True,
+                    "best_relevance_score": 0.0,
+                    "timing": timing
+                }
 
-        # ═══════════════════════════════════════════════════
-        # PASO 5: Almacenar en Semantic Cache
-        # ═══════════════════════════════════════════════════
-        # Para que la próxima query similar sea un HIT
-        self.cache.store(query, context_result)
+            # ═══════════════════════════════════════════════════
+            # PASO 4: Procesar con ContextHandler
+            # ═══════════════════════════════════════════════════
+            # Selecciona mejores chunks, rerankea (Extended), trunca al
+            # límite de tokens, formatea con [MEMORY]/[/MEMORY]
+            t0 = time.perf_counter()
+            context_result = self.context_handler.process(
+                search_results=all_results,
+                query=query,
+                mode=mode
+            )
+            timing["context_handler_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
-        print(f"[RAG] Contexto generado: {context_result['num_chunks']} chunks, "
-              f"~{context_result['approx_tokens']} tokens")
+            # Añadir metadata extra
+            context_result["cache_hit"] = False
+            context_result["enhanced_query"] = enhanced
+            context_result["best_relevance_score"] = best_score
 
-        return context_result
+            # ═══════════════════════════════════════════════════
+            # PASO 5: Almacenar en Semantic Cache
+            # ═══════════════════════════════════════════════════
+            # Para que la próxima query similar sea un HIT
+            self.cache.store(query, context_result)
+
+            timing["total_ms"] = round((time.perf_counter() - t_start) * 1000, 1)
+            context_result["timing"] = timing
+
+            logger.info(f"Contexto generado: {context_result['num_chunks']} chunks, "
+                       f"~{context_result['approx_tokens']} tokens, "
+                       f"{timing['total_ms']}ms total")
+
+            return context_result
+
+        except Exception as e:
+            # ═══════════════════════════════════════════════════
+            # DEGRADACIÓN GRACEFUL
+            # ═══════════════════════════════════════════════════
+            # Si algo falla, Hannah sigue funcionando — solo sin contexto.
+            # El error se loguea para que el equipo pueda investigar.
+            logger.error(f"Error en pipeline RAG: {type(e).__name__}: {e}")
+            timing["total_ms"] = round((time.perf_counter() - t_start) * 1000, 1)
+            return {
+                "formatted_context": "[MEMORY][/MEMORY]",
+                "raw_chunks": [],
+                "scores": [],
+                "num_chunks": 0,
+                "approx_tokens": 0,
+                "cache_hit": False,
+                "enhanced_query": None,
+                "filtered_by_relevance": False,
+                "best_relevance_score": 0.0,
+                "error": f"{type(e).__name__}: {str(e)}",
+                "timing": timing
+            }
 
     async def aretrieve(self, query: str, mode: str = "simplified") -> dict:
         """
@@ -321,8 +487,134 @@ class RAGComponent:
                 "total_documents": collection_count,
             },
             "cache": cache_stats,
+            "relevance_threshold": self.MIN_RELEVANCE_SCORE,
+            "min_query_length": self.MIN_QUERY_LENGTH,
             "status": "operational"
         }
+
+    def health_check(self) -> dict:
+        """
+        Diagnóstico rápido del pipeline RAG.
+        Útil para el endpoint /health del backend o para debugging.
+        Verifica:
+          - VectorStore accesible y con documentos
+          - Cache funcional
+          - Embedding model cargado
+        Returns:
+            {"healthy": True/False, "issues": [...], "stats": {...}}
+        """
+        issues = []
+
+        # Verificar VectorStore
+        try:
+            doc_count = self.vector_store.collection.count()
+            if doc_count == 0:
+                issues.append("VectorStore vacío: no hay documentos ingestados")
+        except Exception as e:
+            issues.append(f"VectorStore inaccesible: {str(e)}")
+            doc_count = -1
+
+        # Verificar Cache
+        try:
+            cache_stats = self.cache.get_stats()
+        except Exception as e:
+            issues.append(f"Cache error: {str(e)}")
+            cache_stats = {}
+
+        # Verificar Embedding Service (intenta generar un embedding de test)
+        try:
+            test_embedding = self.vector_store.embedder.get_embedding("test")
+            if len(test_embedding) != 384:
+                issues.append(f"Embedding dimensión inesperada: {len(test_embedding)}")
+        except Exception as e:
+            issues.append(f"Embedding model error: {str(e)}")
+
+        healthy = len(issues) == 0
+        if healthy:
+            logger.info("Health check: OK")
+        else:
+            logger.warning(f"Health check: {len(issues)} issues encontrados")
+
+        return {
+            "healthy": healthy,
+            "issues": issues,
+            "stats": {
+                "documents": doc_count,
+                "cache": cache_stats,
+                "relevance_threshold": self.MIN_RELEVANCE_SCORE
+            }
+        }
+
+    def adjust_relevance_threshold(self, new_threshold: float) -> dict:
+        """
+        Ajusta el umbral de relevancia en runtime.
+        Útil para A/B testing o para afinar durante desarrollo.
+        Args:
+            new_threshold: Nuevo valor entre 0.0 y 1.0.
+                          Recomendado: 0.25-0.45
+                          Más bajo → más permisivo (más contexto inyectado)
+                          Más alto → más estricto (menos contexto)
+        Returns:
+            {"previous": float, "current": float}
+        """
+        if not 0.0 <= new_threshold <= 1.0:
+            raise ValueError(f"Threshold debe estar entre 0.0 y 1.0, recibido: {new_threshold}")
+
+        previous = self.MIN_RELEVANCE_SCORE
+        self.MIN_RELEVANCE_SCORE = new_threshold
+        logger.info(f"Relevance threshold ajustado: {previous:.3f} → {new_threshold:.3f}")
+
+        # Limpiar cache porque los resultados previos pueden tener
+        # decisiones de filtrado diferentes
+        self.cache.clear()
+        logger.info("Cache limpiado (threshold cambió)")
+
+        return {"previous": previous, "current": new_threshold}
+
+    def debug_relevance(self, query: str, n_results: int = 5) -> list[dict]:
+        """
+        Herramienta de diagnóstico para entender qué scores obtiene una query.
+        NO modifica el cache ni genera contexto. Solo muestra qué encontraría
+        el RAG si se le preguntara.
+
+        Útil para:
+          - Afinar MIN_RELEVANCE_SCORE empíricamente
+          - Verificar que los documentos ingestados son encontrables
+          - Debugging cuando "el RAG no da contexto y debería"
+
+        Ejemplo:
+            results = rag.debug_relevance("what's your favorite movie?")
+            for r in results:
+                print(f"  score={r['score']:.3f} | {r['text'][:60]}")
+
+        Args:
+            query: Texto a buscar.
+            n_results: Cuántos resultados mostrar.
+        Returns:
+            Lista de dicts ordenada por score (mayor = más relevante):
+            [{"text": "...", "score": 0.65, "distance": 0.35,
+              "would_pass_filter": True, "metadata": {...}}]
+        """
+        results = self.vector_store.search(query, n_results=n_results)
+
+        docs = results.get("documents", [[]])[0]
+        metas = results.get("metadatas", [[]])[0]
+        dists = results.get("distances", [[]])[0]
+
+        output = []
+        for doc, meta, dist in zip(docs, metas, dists):
+            score = 1.0 - dist
+            output.append({
+                "text": doc,
+                "score": round(score, 4),
+                "distance": round(dist, 4),
+                "would_pass_filter": score >= self.MIN_RELEVANCE_SCORE,
+                "metadata": meta
+            })
+
+        # Ya viene ordenado por distancia de ChromaDB, pero lo explicitamos
+        output.sort(key=lambda x: x["score"], reverse=True)
+        return output
 
 
 # ===========================================================================================================================================================================================================================================
@@ -407,6 +699,58 @@ if __name__ == "__main__":
     print(f"  Tokens:     ~{result3['approx_tokens']}")
     print(f"  Queries usadas: {len(result3['enhanced_query']['search_queries'])}")
     print(f"  Contexto (primeros 300 chars):\n  {result3['formatted_context'][:300]}...")
+
+    # ═══════════════════════════════════════════════════
+    # TEST 4: Filtro de relevancia (queries irrelevantes)
+    # ═══════════════════════════════════════════════════
+    print("\n" + "=" * 60)
+    print("  TEST 4: Filtro de relevancia - Chat casual")
+    print("=" * 60)
+    casual_queries = ["hi", "love you", "haha ok", "k"]
+    for cq in casual_queries:
+        r = rag.retrieve(cq, mode="simplified")
+        filtered = r.get("filtered_by_relevance", False)
+        skip = r.get("skip_reason", "")
+        score = r.get("best_relevance_score", "N/A")
+        status = "FILTRADO" if filtered else "PASÓ"
+        reason = f" (skip: {skip})" if skip else f" (score: {score})"
+        print(f"  '{cq}' → {status}{reason}")
+
+    # ═══════════════════════════════════════════════════
+    # TEST 5: Health check
+    # ═══════════════════════════════════════════════════
+    print("\n" + "=" * 60)
+    print("  TEST 5: Health Check")
+    print("=" * 60)
+    health = rag.health_check()
+    print(f"  Healthy: {health['healthy']}")
+    if health['issues']:
+        for issue in health['issues']:
+            print(f"  ⚠ {issue}")
+
+    # ═══════════════════════════════════════════════════
+    # TEST 6: Timing del pipeline
+    # ═══════════════════════════════════════════════════
+    print("\n" + "=" * 60)
+    print("  TEST 6: Timing del Pipeline")
+    print("=" * 60)
+    result_timed = rag.retrieve("¿Qué modelo usa Hannah?", mode="simplified")
+    t = result_timed.get("timing", {})
+    for step, ms in t.items():
+        print(f"  {step}: {ms}ms")
+
+    # ═══════════════════════════════════════════════════
+    # TEST 7: Debug de relevancia
+    # ═══════════════════════════════════════════════════
+    print("\n" + "=" * 60)
+    print("  TEST 7: Debug Relevancia")
+    print("=" * 60)
+    for test_q in ["¿Cuántos parámetros tiene?", "haha ok bye"]:
+        print(f"\n  Query: '{test_q}'")
+        debug = rag.debug_relevance(test_q, n_results=3)
+        for d in debug:
+            icon = "PASS" if d["would_pass_filter"] else "FAIL"
+            print(f"    [{icon}] score={d['score']:.3f} | {d['text'][:50]}...")
 
     # ═══════════════════════════════════════════════════
     # ESTADÍSTICAS
