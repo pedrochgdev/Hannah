@@ -163,6 +163,12 @@ class TokenHandler:
         """Remove all history for a session."""
         self._sessions.pop(session_id, None)
 
+    def pop_last_turn(self, session_id: str) -> None:
+        """Elimina el último turno de la sesión (para regeneración)."""
+        session = self._sessions.get(session_id)
+        if session and session.turns:
+            session.turns.pop()
+
     def session_count(self) -> int:
         return len(self._sessions)
 
