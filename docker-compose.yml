@@ -1,0 +1,71 @@
+services:
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  chromadb:
+    image: chromadb/chroma:latest
+    restart: unless-stopped
+    ports:
+      - "8010:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+
+  hannah-api:
+    build:
+      context: ./backend-hannah
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-hannah-local-secret-2026}
+      - SESSION_TTL_SECONDS=1800
+      - FAST_MODEL_URL=http://host.docker.internal:8001/generate
+      - SLOW_MODEL_URL=http://host.docker.internal:8003/generate
+    volumes:
+      - ./frontend-hannah:/app/../frontend-hannah:ro
+      - ./backend-hannah/rag/hannah_knowledge:/app/rag/hannah_knowledge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  node-gateway:
+    build:
+      context: ../hannah-backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-hannah-local-secret-2026}
+      - SESSION_TTL_MINUTES=30
+      - LLM_API_KEY=${LLM_API_KEY:-placeholder}
+      - CORS_ORIGIN=*
+      - NODE_ENV=production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  redis_data:
+  chroma_data:
