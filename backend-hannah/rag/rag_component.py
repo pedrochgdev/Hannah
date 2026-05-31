@@ -90,22 +90,24 @@ class RAGComponent:
 
     def __init__(self, db_path: str = "./hannah_vectordb",
                  cache_threshold: float = 0.92,
-                 cache_size: int = 500):
+                 cache_size: int = 500,
+                 tenant_id: str = "local"):
         """
         Inicializa todos los componentes del pipeline.
         Args:
             db_path: Ruta a la base de datos ChromaDB.
                      Default: "./hannah_vectordb" (carpeta local) Se crea automáticamente si no existe.
             cache_threshold: Umbral de similitud para el Semantic Cache.
-                            Default: 0.92 
+                            Default: 0.92
             cache_size: Tamaño máximo del caché semántico.
                        Default: 500 entradas (~750KB de RAM)
+            tenant_id: Identificador de tenant para namespacing de colecciones.
         """
         print("[RAG] Inicializando componentes...")
 
         # ─── Componente 1: Base de datos vectorial ───
         # Almacena los documentos como vectores en ChromaDB
-        self.vector_store = VectorStore(db_path=db_path)
+        self.vector_store = VectorStore(db_path=db_path, tenant_id=tenant_id)
 
         # ─── Componente 2: Caché semántico ───
         # Evita búsquedas repetidas para queries similares

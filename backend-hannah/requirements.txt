@@ -2,18 +2,25 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.0
 pydantic==2.7.0
 pydantic-settings==2.3.0
+python-multipart==0.0.9
 
-# Embeddings for semantic cache
+# Embeddings + RAG
 sentence-transformers==3.0.0
+chromadb>=0.4.0
 
 # Classifier
 scikit-learn==1.5.0
 numpy==1.26.4
 joblib==1.4.2
 
-# Storage
+# Storage / Auth
 redis==5.0.7
-aioredis==2.0.1
+python-jose[cryptography]==3.3.0
+
+# Audio (ASR + TTS)
+faster-whisper==1.2.1
+kokoro>=0.9.2
+soundfile==0.12.1
 
 # Utils
 python-dotenv==1.0.0

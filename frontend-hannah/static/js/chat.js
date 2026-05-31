@@ -1,3 +1,66 @@
+// ═══════════════════════════════════════════════════════════════════════
+// BLOQUE DE LOGIN — Multi-sesión Hannah
+// Detecta automáticamente el host (funciona en LAN con cualquier IP)
+// ═══════════════════════════════════════════════════════════════════════
+const API_BASE = window.location.origin + '/api/v1';
+let _authToken = sessionStorage.getItem('hannah_token');
+
+document.addEventListener('DOMContentLoaded', () => {
+  const overlay  = document.getElementById('loginOverlay');
+  const loginBtn = document.getElementById('loginBtn');
+  const errEl    = document.getElementById('loginError');
+
+  // Si ya hay token, ocultar overlay directamente
+  if (_authToken) {
+    overlay.classList.add('hidden');
+  }
+
+  loginBtn.addEventListener('click', async () => {
+    const username = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value;
+    errEl.style.display = 'none';
+
+    if (!username || !password) {
+      errEl.textContent = 'Selecciona tu nombre e ingresa la contraseña.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Entrando...';
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!res.ok) throw new Error('Credenciales incorrectas');
+
+      const data = await res.json();
+      _authToken = data.access_token;
+      sessionStorage.setItem('hannah_token', _authToken);
+      sessionStorage.setItem('hannah_user', username);
+      overlay.classList.add('hidden');
+    } catch {
+      errEl.textContent = 'Credenciales incorrectas. Intenta de nuevo.';
+      errEl.style.display = 'block';
+    } finally {
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Entrar';
+    }
+  });
+
+  // Enter en el campo password también dispara login
+  document.getElementById('loginPass').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loginBtn.click();
+  });
+});
+// ═══════════════════════════════════════════════════════════════════════
+// FIN BLOQUE LOGIN — el resto del código original continúa sin cambios
+// ═══════════════════════════════════════════════════════════════════════
+
 /**
  * Hannah Chat - Frontend Logic
  * Handles chat interface, history, backend communication, STT (Whisper), and TTS (Kokoro).
@@ -204,8 +267,9 @@ async function sendAudioForTranscription() {
     
     try {
         // Llama a tu endpoint backend donde corre faster-whisper
-        const response = await fetch('/api/v1/transcribe', {
+        const response = await fetch(`${API_BASE}/transcribe`, {
             method: 'POST',
+            headers: { 'Authorization': `Bearer ${_authToken}` },
             body: formData
         });
         
@@ -236,9 +300,9 @@ async function playHannahVoice(text) {
     if (!isVoiceEnabled) return;
 
     try {
-        const response = await fetch('/api/v1/tts', {
+        const response = await fetch(`${API_BASE}/tts`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_authToken}` },
             body: JSON.stringify({ text: text })
         });
 
@@ -283,9 +347,9 @@ async function sendMessage() {
     scrollToBottom();
 
     try {
-        const response = await fetch(`/api/v1/chat`, {
+        const response = await fetch(`${API_BASE}/chat`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_authToken}` },
             body: JSON.stringify({
                 session_id: sessionId,
                 prompt: text,

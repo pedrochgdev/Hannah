@@ -10,6 +10,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 </head>
 <body>
+    <!-- Login overlay — se oculta automáticamente tras autenticación -->
+<div id="loginOverlay">
+  <div id="loginCard">
+    <div class="login-avatar">💬</div>
+    <h2>Hannah</h2>
+    <p>Selecciona tu nombre para continuar</p>
+    <select id="loginUser">
+      <option value="">— Selecciona —</option>
+      <option value="luis">Luis</option>
+      <option value="user2">Miembro 2</option>
+      <option value="user3">Miembro 3</option>
+      <option value="user4">Miembro 4</option>
+      <option value="user5">Miembro 5</option>
+    </select>
+    <input type="password" id="loginPass" placeholder="Contraseña" />
+    <button id="loginBtn">Entrar</button>
+    <p id="loginError">Credenciales incorrectas</p>
+  </div>
+</div>
     <div class="chat-container" id="chatContainer">
 
         <!-- Header -->
