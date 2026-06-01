@@ -914,3 +914,64 @@ body {
 .bubble-markdown p:last-child {
     margin-bottom: 0;
 }
+
+/* ── Login Overlay ─────────────────────────────────────────────────── */
+#loginOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+#loginOverlay.hidden { display: none; }
+
+#loginCard {
+  background: #fff;
+  border-radius: 16px;
+  padding: 40px 36px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+.login-avatar { font-size: 48px; }
+#loginCard h2 { margin: 0; font-size: 22px; color: #1F4E79; }
+#loginCard > p { margin: 0; font-size: 13px; color: #666; }
+
+#loginUser,
+#loginPass {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1.5px solid #d0d0d0;
+  font-size: 15px;
+  width: 100%;
+  box-sizing: border-box;
+}
+#loginUser:focus,
+#loginPass:focus {
+  outline: none;
+  border-color: #2E75B6;
+}
+#loginBtn {
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #1F4E79;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#loginBtn:hover { background: #2E75B6; }
+#loginBtn:disabled { background: #aaa; cursor: not-allowed; }
+#loginError {
+  color: #C00000;
+  font-size: 13px;
+  display: none;
+  margin: 0;
+}

@@ -84,13 +84,14 @@ class VectorStore:
     Si cierras Python y lo abres de nuevo, los datos siguen ahí.
     """
 
-    def __init__(self, db_path: str = "./hannah_vectordb"):
+    def __init__(self, db_path: str = "./hannah_vectordb", tenant_id: str = "local"):
         """
         Inicializa la conexión a ChromaDB.
         Args:
             db_path: Carpeta donde se guardará la base de datos.
                      Si no existe, se crea automáticamente.
                      Si ya existe, carga los datos previos.
+            tenant_id: Identificador de tenant para namespacing de colecciones.
         """
         # PersistentClient = los datos sobreviven al reinicio de Python, si solo es para trabajar test usar chromadb.Clieent() que es en memoria y más rápido pero se pierden al cerrar Python
         self.client = chromadb.PersistentClient(path=db_path)
@@ -98,18 +99,13 @@ class VectorStore:
         # Servicio de embeddings compartido
         self.embedder = EmbeddingService()
 
-        # Crear o cargar la colección "knowledge_base"
-        # ─────────────────────────────────────────────
-        # ChromaDB puede tener múltiples colecciones (como tablas en SQL).
-        # Trabajamos con: "knowledge_base".
-        # get_or_create_collection:
-        #   - Si "knowledge_base" ya existe → la carga
-        #   - Si no existe → la crea nueva
+        # Nombre de colección namespaced por tenant (solo chars válidos para ChromaDB)
+        col_name = f"kb_{tenant_id}".replace("-", "_")[:63]
         self.collection = self.client.get_or_create_collection(
-            name="knowledge_base",
-            metadata={"hnsw:space": "cosine"} #Importante para usar distancia coseno con embeddings normalizados
+            name=col_name,
+            metadata={"hnsw:space": "cosine"}
         )
-        print(f"[VectorStore] Colección 'knowledge_base' lista. "
+        print(f"[VectorStore] Colección '{col_name}' lista. "
               f"Documentos actuales: {self.collection.count()}")
 
     def add_documents(self, documents: list[str], metadatas: list[dict], ids: list[str]):
