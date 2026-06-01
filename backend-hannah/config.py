@@ -70,8 +70,6 @@ class Settings(BaseSettings):
     # ── Model Selector ───────────────────────────────────────────────
     selector_model_path: str = "data/model_selector.joblib"
     selector_confidence_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
-    selector_v2_model_path: str = "data/model_selector_v2.joblib"
-    selector_version: str = "v2"
 
     # ── Downstream Models ────────────────────────────────────────────
     fast_model_url: str = "http://localhost:8001/generate"
