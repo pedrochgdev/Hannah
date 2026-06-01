@@ -1,259 +1,281 @@
-# Hannah NLP - Language Model Training Pipeline
+# Hannah — Virtual AI Companion
 
-> Un pipeline completo de entrenamiento de un modelo de lenguaje personalizado (Hannah 360M) con pretraining, SFT (Supervised Fine-Tuning) y DPO (Direct Preference Optimization).
+> Aplicación de AI companion con modelo de lenguaje propio entrenado desde cero. Arquitectura dual: Hannah 360M (modelo fast, custom) + Qwen2.5-14B (modelo slow). Incluye RAG, síntesis de voz, reconocimiento de audio, y avatar 3D.
 
-## Estructura del Proyecto
+---
+
+## Demo
 
 ```
-/HannahNLP
-├── data/                          # Gestión de datos
-│   ├── raw/                       # Datos originales sin procesar (descargados/curados)
-│   ├── processed/                 # Corpus limpios (corpus_final.jsonl)
-│   └── finetuning/                # Datasets listos para entrenamiento
-│       ├── pretrain/              # Binarios para pretraining (train.bin, val.bin)
-│       ├── sft/                   # Binarios para SFT (train.bin, val.bin)
-│       └── dpo_dataset.jsonl      # Dataset para DPO
-├── src/                           # Código fuente principal
-│   ├── tokenizer/                 # Tokenizador Hannah
-│   │   ├── train.py               # Entrenar tokenizador desde scratch
-│   │   ├── validate.py            # Validar tokenizador
-│   │   ├── hannah_tok/            # Tokenizador entrenado (directorio)
-│   │   ├── hannah_tok_fixed/      # Tokenizador alternativo
-│   │   └── test/                  # Tests del tokenizador
-│   ├── model/                     # Arquitectura del modelo (OLMo)
-│   └── training/                  # Scripts de entrenamiento
-│       ├── train_hannah.py        # Pretraining del modelo base
-│       ├── train_sft_hannah.py    # SFT con datos curados
-│       └── train_dpo_hannah.py    # DPO con prefer. ajustadas
-├── scripts/                       # Utilidades y procesamiento
-│   ├── data_pipeline/             # Pipeline de preparación de datos
-│   │   ├── build_corpus.py        # Combinar, limpiar y deduplicar raw data
-│   │   ├── debug_datasets.py      # Verificar datasets de HF
-│   │   ├── prepare_corpus.py      # Tokenizar corpus (generar pretrain bins)
-│   │   ├── prepare_sft_corpus.py  # Tokenizar SFT corpus (generar SFT bins)
-│   │   ├── clean_sft_corpus.py    # Limpiar corpus SFT
-│   │   ├── download/              # Descargar datos de fuentes externas
-│   │   │   ├── gutenberg.py       # Descargar de Project Gutenberg
-│   │   │   ├── hf_datasets.py     # Descargar de HuggingFace
-│   │   │   └── extend_corpus.py   # Extender corpus con más datos
-│   │   └── clean/                 # Limpieza y deduplicación
-│   │       ├── filters.py         # Filtros de limpieza
-│   │       ├── dedup.py           # MinHash deduplication
-│   │       ├── pipeline.py        # Pipeline de limpieza
-│   │       ├── stats.py           # Estadísticas
-│   │       └── validate.py        # Validación
-│   ├── processing/                # Construcción de datasets específicos
-│   │   ├── build_sft_corpus.py    # Construir corpus SFT de datos curados
-│   │   └── build_dpo_corpus.py    # Construir dataset DPO
-│   └── tests/                     # Tests y validación
-│       ├── test_hannah.py         # Test del modelo base entrenado
-│       ├── test_sft_hannah.py     # Test del modelo SFT
-│       └── tokenizer/             # Tests del tokenizador
-├── checkpoints/                   # Pesos del modelo guardados
-│   ├── hannah_360m/               # Modelo pretrainado (hannah_final.pt)
-│   ├── hannah_sft/                # Modelo SFT (hannah_sft_final.pt)
-│   └── hannah_dpo/                # Modelo DPO (hannah_dpo_final.pt)
-├── configs/                       # Configuraciones
-│   └── hana_360m.yaml             # Hiperparámetros del modelo
-├── requirements.txt               # Dependencias
-├── .gitignore                     # Ignorar carpetas grandes (data/, checkpoints/)
-└── README.md                      # Este archivo
+Frontend  → http://localhost:3000
+Backend   → http://localhost:8000
+Hannah    → http://localhost:8001  (modelo 360M)
+Qwen      → http://localhost:8002  (modelo 14B)
 ```
+
+---
+
+## Arquitectura del Sistema
+
+```
+Usuario (voz / texto)
+        │
+        ▼
+  ┌─────────────┐
+  │  Frontend   │  HTML + CSS + JS  (puerto 3000)
+  │  (chat UI)  │  Avatar 3D, TTS playback, mic input
+  └──────┬──────┘
+         │ HTTP
+         ▼
+  ┌─────────────────────────────────────────────────┐
+  │              Backend FastAPI (8000)              │
+  │                                                  │
+  │  /api/v1/chat  →  Token Handler                 │
+  │                        │                         │
+  │              ┌─────────┴──────────┐              │
+  │              │   Semantic Cache   │              │
+  │              └─────────┬──────────┘              │
+  │                        │ MISS                    │
+  │              ┌─────────┴──────────┐              │
+  │              │   Model Selector   │  SVM/NB      │
+  │              └────┬──────────┬────┘              │
+  │                FAST         SLOW                 │
+  │                  │            │                  │
+  │          RAG simplified  RAG extended            │
+  │          (~75 tokens)    (~330 tokens)           │
+  │                  │            │                  │
+  │                  ▼            ▼                  │
+  │           Hannah 360M    Qwen2.5-14B             │
+  │           (puerto 8001)  (puerto 8002)           │
+  └─────────────────────────────────────────────────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  TTS / ASR  │  Kokoro (síntesis) · Whisper (transcripción)
+  └─────────────┘
+```
+
+---
+
+## Modelo Hannah 360M
+
+Modelo de lenguaje entrenado desde cero sobre arquitectura OLMo3.
+
+| Parámetro | Valor |
+|-----------|-------|
+| Arquitectura | OLMo3 Transformer |
+| Parámetros | 367.6M |
+| Vocab size | 32,000 |
+| d_model | 1024 |
+| n_layers | 24 |
+| n_heads | 16 |
+| Hardware entrenamiento | RTX 5070 Ti 16GB |
+
+Pipeline de entrenamiento (scripts **no incluidos** en este repo):
+
+```
+Pretraining → SFT Conversacional → RAG Fine-Tuning → SFT Personalidad
+```
+
+El modelo final (`hannah_personality_final.pt`) aprende a:
+- Conversar en formato `[SYS][USR][ASS]`
+- Leer y usar contexto del bloque `[MEMORY]`
+- Responder con la voz y personalidad de Hannah (cálida, juguetona, natural)
+- Manejar prompts incomprensibles e idioma incorrecto
+
+Los pesos del modelo **no están en este repositorio** por tamaño (~1.4GB). Se cargan en `backend-hannah/model/`.
+
+---
+
+## Estructura del Repositorio
+
+```
+Hannah/
+│
+├── backend-hannah/
+│   ├── app.py                      # FastAPI principal — endpoints /chat, /tts
+│   ├── config.py                   # Configuración global
+│   ├── requirements.txt
+│   │
+│   ├── server/
+│   │   ├── hannah_model_server.py  # Servidor Hannah 360M (puerto 8001)
+│   │   └── qwen_model_server.py    # Servidor Qwen2.5-14B (puerto 8002)
+│   │
+│   ├── core/
+│   │   ├── model_selector.py       # Clasificador fast/slow (SVM/NaiveBayes)
+│   │   └── token_handler.py        # Gestión de tokens y contexto
+│   │
+│   ├── rag/
+│   │   ├── rag_component.py        # Orquestador principal del RAG
+│   │   ├── hannah_pipeline.py      # Pipeline completo RAG + modelo
+│   │   ├── vector_store.py         # ChromaDB — base vectorial
+│   │   ├── embeddings.py           # all-MiniLM-L6-v2 (384 dims)
+│   │   ├── semantic_cache.py       # Caché semántico (threshold 0.92)
+│   │   ├── query_enhancer.py       # Expansión de queries (modo extended)
+│   │   ├── context_handler.py      # Formateo [MEMORY]...[/MEMORY]
+│   │   ├── user_profile.py         # Perfil de sesión del usuario
+│   │   ├── ingest_knowledge.py     # Ingesta de conocimiento a ChromaDB
+│   │   └── hannah_knowledge/       # Base vectorial persistente (ChromaDB)
+│   │
+│   ├── model/
+│   │   ├── hannah_personality_final.pt   # ← modelo activo (no en repo)
+│   │   └── hannah_dpo_v1_final.pt        # versión anterior (no en repo)
+│   │
+│   ├── tokenizer/
+│   │   └── hannah_tok/             # Tokenizador SentencePiece (32k vocab)
+│   │
+│   └── data/
+│       └── model_selector.joblib   # Clasificador fast/slow entrenado
+│
+├── frontend-hannah/
+│   ├── templates/
+│   │   └── index.html              # UI principal del chat
+│   └── static/
+│       ├── css/
+│       │   └── style.css
+│       └── js/
+│           └── chat.js             # Lógica de chat, TTS, micrófono
+│
+├── scripts/                        # Utilidades y herramientas
+├── src/                            # Código fuente auxiliar
+├── start.sh                        # Script de arranque (fish shell)
+├── requirements.txt
+└── README.md
+```
+
+---
 
 ## Instalación
+
+### Requisitos
+
+- Python 3.11+
+- CUDA 12+ con GPU NVIDIA (para Hannah 360M y Qwen)
+- fish shell (para `start.sh`)
+
+### Dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Dependencias principales:**
+Dependencias principales:
 
-- `numpy`, `torch`, `transformers`
-- `tqdm`, `datasets`, `langdetect`
-- `datasketch` (para deduplicación MinHash)
-- `olmo_core` (arquitectura OLMo para el modelo)
+- `torch`, `transformers`, `fastapi`, `uvicorn`
+- `chromadb`, `sentence-transformers`
+- `olmo-core` (arquitectura del modelo)
+- `kokoro` (TTS)
+- `openai-whisper` (ASR)
 
----
-
-##  Pipeline de Entrenamiento Completo
-
-### **Fase 0: Preparar Tokenizador** 
-
-El tokenizador ya viene entrenado en `src/tokenizer/hannah_tok/`
+### Configuración inicial
 
 ```bash
-# Entrenar tokenizador desde un corpus
-python src/tokenizer/train.py --corpus data/processed/corpus_final.jsonl \
-   --vocab_size 32000 --output src/tokenizer/hannah_tok_new
+# 1. Colocar el modelo en backend-hannah/model/
+#    hannah_personality_final.pt  (~1.4GB, no incluido en repo)
 
-# Validar tokenizador
-python src/tokenizer/validate.py --tokenizer src/tokenizer/hannah_tok
+# 2. Ingestar conocimiento de Hannah en ChromaDB
+cd backend-hannah
+python rag/ingest_knowledge.py
+
+# 3. Entrenar el model selector
+python train_selector.py
 ```
 
 ---
 
-### **Fase 1: Construir Corpus Base** 
-
-Combina, limpia y deduplica datos crudos.
+## Arranque
 
 ```bash
-# 1. Descargar datos opcionales
-python scripts/data_pipeline/download/hf_datasets.py
-python scripts/data_pipeline/download/gutenberg.py
-
-# 2. Limpiar, combinar y deduplicar
-cd scripts/data_pipeline && python build_corpus.py
-# Output: data/processed/corpus_final.jsonl
-
-# 3. Tokenizar para pretraining
-python scripts/data_pipeline/prepare_corpus.py
-# Outputs:
-#   - data/finetuning/pretrain/train.bin
-#   - data/finetuning/pretrain/val.bin
+./start.sh
 ```
+
+El script levanta los 4 servicios en paralelo:
+
+| Servicio | Puerto | Descripción |
+|----------|--------|-------------|
+| Frontend | 3000 | UI del chat (HTTP server) |
+| Backend FastAPI | 8000 | API principal |
+| Hannah 360M | 8001 | Modelo fast (custom) |
+| Qwen2.5-14B | 8002 | Modelo slow (Ollama/HF) |
 
 ---
 
-### **Fase 2: Pretraining**
+## Pipeline de Procesamiento de Mensajes
 
-Entrenar el modelo base (Hannah 360M).
+Cada mensaje del usuario pasa por:
+
+1. **Token Handler** — prepara el mensaje y el historial
+2. **Semantic Cache** — si hay una respuesta similar cacheada (score ≥ 0.92), la retorna directamente
+3. **Model Selector** — clasifica el mensaje como `fast` o `slow` usando un SVM entrenado con 9 features
+4. **RAG retrieval** — busca en ChromaDB conocimiento relevante de Hannah
+   - Modo `simplified`: 1-3 chunks, ~75 tokens
+   - Modo `extended`: 5-10 chunks, ~330 tokens
+   - Si el score < 0.35: no se inyecta contexto
+5. **User Profile** — inyecta hechos del usuario detectados en sesión (nombre, trabajo, etc.) en `[MEMORY]`
+6. **Generación** — Hannah 360M (fast) o Qwen2.5-14B (slow)
+7. **TTS** — Kokoro sintetiza la respuesta en audio
+
+---
+
+## RAG — Base de Conocimiento
+
+Hannah tiene una base vectorial (ChromaDB) con conocimiento sobre sí misma: personalidad, hechos, preferencias, y contexto conversacional.
+
+Embeddings: `all-MiniLM-L6-v2` (384 dimensiones)
+
+Para añadir conocimiento nuevo:
 
 ```bash
-python src/training/train_hannah.py
-# Output: checkpoints/hannah_360m/hannah_final.pt
+python rag/ingest_knowledge.py
+```
+
+Para diagnosticar qué score obtiene una query:
+
+```python
+from rag.rag_component import RAGComponent
+rag = RAGComponent(db_path="rag/hannah_knowledge")
+results = rag.debug_relevance("what's your favorite movie?")
+for r in results:
+    print(f"score={r['score']:.3f} | {r['text'][:60]}")
 ```
 
 ---
 
-### **Fase 3: Construir Corpus SFT**
+## Model Selector
 
-Preparar datos de SFT y DPO.
+Clasificador ligero (SVM o Naive Bayes) que decide si el mensaje va a Hannah 360M (fast) o Qwen2.5-14B (slow), basado en 9 features:
+
+| Feature | Descripción |
+|---------|-------------|
+| prompt_token_len | Longitud estimada en tokens |
+| complexity_kw_count | Keywords de complejidad (explain, write, compare...) |
+| sentence_count | Número de oraciones |
+| question_count | Cantidad de signos `?` |
+| temporal_marker_count | Marcadores temporales (since, lately...) |
+| multi_topic_count | Conjunciones multi-tema (and also, besides...) |
+| history_turns | Turnos de historial disponibles |
+| avg_assistant_len | Largo promedio de respuestas anteriores |
+| prompt_char_len | Largo en caracteres |
+
+Para reentrenar con nuevos ejemplos:
 
 ```bash
-# 1. Construir SFT corpus
-python scripts/processing/build_sft_corpus.py
-# Output: data/finetuning/sft_corpus.jsonl
-
-# 2. Limpiar corpus SFT
-python scripts/data_pipeline/clean_sft_corpus.py
-# Output: data/finetuning/sft_corpus_clean.jsonl
-
-# 3. Tokenizar para SFT
-python scripts/data_pipeline/prepare_sft_corpus.py
-# Outputs:
-#   - data/finetuning/sft/train.bin
-#   - data/finetuning/sft/val.bin
-
-# 4. Construir dataset DPO
-python scripts/processing/build_dpo_corpus.py
-# Output: data/finetuning/dpo_dataset.jsonl
+cd backend-hannah
+python train_selector.py
 ```
 
 ---
 
-### **Fase 4: SFT (Supervised Fine-Tuning)**
+## Troubleshooting
 
-```bash
-python src/training/train_sft_hannah.py
-# Output: checkpoints/hannah_sft/hannah_sft_final.pt
-```
-
----
-
-### **Fase 5: DPO (Direct Preference Optimization)**
-
-```bash
-python src/training/train_dpo_hannah.py
-# Output: checkpoints/hannah_dpo/hannah_dpo_final.pt  ← MODELO FINAL
-```
+| Problema | Causa | Solución |
+|----------|-------|----------|
+| Hannah no recuerda el nombre del usuario | User Profile no detectó el patrón | Verificar `rag/user_profile.py` |
+| RAG siempre retorna vacío | Score < 0.35 para todos los docs | Bajar threshold con `rag.adjust_relevance_threshold(0.25)` |
+| CUDA OOM al cargar ambos modelos | Insuficiente VRAM | Cargar Qwen en CPU o usar cuantización |
+| `model_selector.joblib` no encontrado | No se corrió `train_selector.py` | `python train_selector.py` |
+| TTS sin audio | Kokoro no iniciado | Verificar servicio en `start.sh` |
 
 ---
 
-##  Testing y Validación
-
-```bash
-# Test del modelo base
-python scripts/tests/test_hannah.py
-
-# Test del modelo DPO
-python scripts/tests/test_sft_hannah.py
-```
-
----
-
-##  Estructura de Datos
-
-Antes de ejecutar el pipeline:
-
-```
-data/raw/
-├── hannah_curated.jsonl       # Datos curados (2-3k ejemplos)
-├── gutenberg/                 # Clásicos de literatura
-├── hf/                        # Datasets de HuggingFace
-└── c4/                        # Common Crawl
-```
-
-Salidas del pipeline:
-
-| Fase          | Archivo                                      | Tamaño     |
-| ------------- | -------------------------------------------- | ---------- |
-| Corpus        | `data/processed/corpus_final.jsonl`          | 10-50 GB   |
-| Pretrain Bins | `data/finetuning/pretrain/{train,val}.bin`   | 20-100 GB  |
-| SFT Bins      | `data/finetuning/sft/{train,val}.bin`        | 100-500 MB |
-| DPO Dataset   | `data/finetuning/dpo_dataset.jsonl`          | 50-200 MB  |
-| Model Final   | `checkpoints/hannah_dpo/hannah_dpo_final.pt` | ~1.5 GB    |
-
----
-
-##  Configuração
-
-### Hiperparámetros
-
-Edita los valores en `src/training/train_*.py`:
-
-**Pretraining:**
-
-- `BATCH_SIZE = 4` (ajusta según VRAM)
-- `GRAD_ACCUM_STEPS = 16`
-- `LEARNING_RATE = 3e-4`
-- `MAX_STEPS = 80_000`
-- `SEQ_LEN = 1024`
-
-**SFT/DPO:**
-
-- Valores similares, menos steps
-
-### CUDA Out of Memory
-
-Si se queda sin memoria:
-
-1. Reduce `BATCH_SIZE`
-2. Aumenta `GRAD_ACCUM_STEPS`
-3. Reduce `SEQ_LEN` a 512
-
----
-
-##  Troubleshooting
-
-| Error                                           | Solución                           |
-| ----------------------------------------------- | ---------------------------------- |
-| "No existe: data/finetuning/pretrain/train.bin" | Ejecuta `prepare_corpus.py`        |
-| CUDA OOM                                        | Reduce BATCH_SIZE o SEQ_LEN        |
-| Tokenizer not found                             | Verifica rutas en `src/tokenizer/` |
-
----
-
-##  Limpiar Espacio
-
-```bash
-# Ver tamaño
-du -sh data/ checkpoints/
-
-# Limpiar intermedios
-rm -rf data/processed/corpus_merged.jsonl
-rm -rf data/processed/corpus_deduped.jsonl
-```
-
----
-
-**Última actualización:** Abril 2026  
+**Última actualización:** Junio 2026
