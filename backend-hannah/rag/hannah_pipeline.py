@@ -85,7 +85,6 @@ sys.path.insert(0, SCRIPT_DIR)
 sys.path.insert(0, REPO_DIR)
 
 from rag_component import RAGComponent
-from rag.user_profile import UserProfile
 
 # Ruta de la BD persistente (misma que usa ingest_knowledge.py)
 KNOWLEDGE_DB_PATH = os.path.join(SCRIPT_DIR, "hannah_knowledge")
@@ -143,7 +142,6 @@ class HannahPipeline:
             cache_threshold=0.92,
             cache_size=500
         )
-        self.user_profile = UserProfile()
 
         # ─── Modelo Hannah ───
         self.model = None
@@ -216,50 +214,58 @@ class HannahPipeline:
     def process_message(self, user_msg: str, history: list = None) -> dict:
         """
         Procesa un mensaje del usuario y retorna la respuesta de Hannah.
+        Este es el ÚNICO método que el backend necesita llamar.
+        Args:
+            user_msg: El mensaje del usuario (string).
+            history:  Lista de tuplas (user_msg, hannah_response) con
+                      el historial de la conversación actual.
+                      Ejemplo: [("Hi!", "Hey~"), ("How are you?", "Good!")]
+
+        Returns:
+            dict con:
+                - "text":        La respuesta de Hannah (string)
+                - "source":      De dónde salió: "cache", "fast", o "slow"
+                - "rag_context": El contexto RAG usado (para debug)
+                - "mode":        "simplified" o "extended"
+                - "cache_hit":   True/False
+                - "latency":     Tiempo total en segundos
+                - "rag_chunks":  Número de chunks recuperados
         """
         if history is None:
             history = []
- 
-        import time
+
         t_start = time.time()
- 
-        # ─── Paso 0: Actualizar perfil del usuario ───────────────
-        # Extrae hechos del mensaje actual (nombre, trabajo, etc.)
-        # y los guarda en self.user_profile para esta sesión.
-        new_facts = self.user_profile.update(user_msg, history)
-        if new_facts:
-            import logging
-            logging.getLogger("hannah.rag").info(
-                f"[UserProfile] Nuevos hechos detectados: {new_facts}"
-            )
- 
-        # ─── Paso 1: Model Selector ───────────────────────────────
+
+        # ─── Paso 1: Model Selector (decidir fast/slow) ───
         mode = self._select_model(user_msg, history)
- 
-        # ─── Paso 2: RAG retrieval ────────────────────────────────
+
+        # ─── Paso 2: RAG retrieval (incluye Semantic Cache) ───
         rag_result = self.rag.retrieve(user_msg, mode=mode)
+
         rag_context = rag_result["formatted_context"]
         cache_hit = rag_result["cache_hit"]
- 
-        # ─── Paso 3: Generar respuesta ────────────────────────────
+
+        # ─── Paso 3: Generar respuesta ───
         if self.model is not None:
+            # Modo producción: generar con Hannah
             prompt = self._build_prompt(user_msg, history, rag_context)
             response_text = self._generate(prompt)
             source = "cache" if cache_hit else ("fast" if mode == "simplified" else "slow")
         else:
-            response_text = f"[MODO TEST] RAG: {rag_context}"
+            # Modo solo-RAG: retornar el contexto como "respuesta"
+            response_text = f"[MODO TEST - SIN MODELO] Contexto RAG recuperado: {rag_context}"
             source = "rag_only"
- 
+
         latency = time.time() - t_start
- 
+
         return {
-            "text":        response_text,
-            "source":      source,
+            "text": response_text,
+            "source": source,
             "rag_context": rag_context,
-            "mode":        mode,
-            "cache_hit":   cache_hit,
-            "latency":     round(latency, 3),
-            "rag_chunks":  rag_result["num_chunks"],
+            "mode": mode,
+            "cache_hit": cache_hit,
+            "latency": round(latency, 3),
+            "rag_chunks": rag_result["num_chunks"],
         }
 
     # ════════════════════════════════════════════════════════════════
@@ -317,68 +323,46 @@ class HannahPipeline:
     # ════════════════════════════════════════════════════════════════
     def _build_prompt(self, user_msg: str, history: list, rag_context: str) -> str:
         """
-        Construye el prompt con tokens de Hannah.
-     
+        Construye el prompt completo con tokens de Hannah.
+
         Estructura:
             [SYS] system_prompt [/SYS]
-            [MEMORY] perfil_usuario + contexto_rag [/MEMORY]
-            [USR] msg1 [/USR][ASS] resp1 [/ASS]
-            [USR] msg_actual [/USR][ASS]
-     
-        El [MEMORY] combina:
-            - Hechos del usuario (nombre, trabajo, etc.) — SIEMPRE
-            - Contexto RAG (conocimiento de Hannah) — si score > 0.35
+            [MEMORY] contexto RAG [/MEMORY]     ← del RAG
+            [USR] msg1 [/USR][ASS] resp1 [/ASS] ← historial
+            [USR] msg2 [/USR][ASS] resp2 [/ASS]
+            [USR] msg_actual [/USR][ASS]         ← Hannah genera aquí
+
+        El contexto RAG va ENTRE [SYS] y el historial para que Hannah
+        lo trate como "información de fondo" — no como instrucción
+        del sistema ni como algo que dijo el usuario.
         """
         prompt = f"[SYS] {SYSTEM_PROMPT} [/SYS]"
-     
-        # ─── Construir bloque [MEMORY] combinado ─────────────────
-        # Parte 1: hechos del usuario (perfil de sesión)
-        user_facts = self.user_profile.to_memory_string()
-     
-        # Parte 2: contexto RAG (conocimiento de Hannah)
-        has_rag = rag_context and rag_context not in ("[MEMORY][/MEMORY]", "")
-     
-        if user_facts and has_rag:
-            # Combinar ambos en un solo bloque [MEMORY]
-            # Extraer contenido interno del RAG (sin los tags externos)
-            rag_inner = rag_context.replace("[MEMORY]", "").replace("[/MEMORY]", "").strip()
-            user_inner = user_facts.replace("[MEMORY]", "").replace("[/MEMORY]", "").strip()
-            prompt += f"[MEMORY]{user_inner} {rag_inner}[/MEMORY]"
-     
-        elif user_facts:
-            # Solo perfil del usuario, sin RAG relevante
-            prompt += user_facts
-     
-        elif has_rag:
-            # Solo RAG, sin hechos del usuario aún
-            prompt += rag_context
-     
-        # ─── Historial ────────────────────────────────────────────
+
+        # Agregar contexto RAG si hay algo útil
+        if rag_context and rag_context != "[MEMORY][/MEMORY]":
+            prompt += f"\n{rag_context}"
+
+        # Agregar historial
         for usr, ass in history:
             prompt += f"[USR] {usr} [/USR][ASS] {ass} [/ASS]"
-     
-        # ─── Mensaje actual ───────────────────────────────────────
+
+        # Agregar mensaje actual
         prompt += f"[USR] {user_msg} [/USR][ASS]"
-     
-        # ─── Truncar si excede SEQ_LEN ────────────────────────────
+
+        # Truncar si excede SEQ_LEN (1024 tokens)
         if self.tokenizer:
             ids = self.tokenizer.encode(prompt)
             while len(history) > 0 and len(ids) > 900:
                 history.pop(0)
+                # Reconstruir prompt sin el turno más antiguo
                 prompt = f"[SYS] {SYSTEM_PROMPT} [/SYS]"
-                if user_facts and has_rag:
-                    rag_inner = rag_context.replace("[MEMORY]", "").replace("[/MEMORY]", "").strip()
-                    user_inner = user_facts.replace("[MEMORY]", "").replace("[/MEMORY]", "").strip()
-                    prompt += f"[MEMORY]{user_inner} {rag_inner}[/MEMORY]"
-                elif user_facts:
-                    prompt += user_facts
-                elif has_rag:
-                    prompt += rag_context
+                if rag_context and rag_context != "[MEMORY][/MEMORY]":
+                    prompt += f"\n{rag_context}"
                 for usr, ass in history:
                     prompt += f"[USR] {usr} [/USR][ASS] {ass} [/ASS]"
                 prompt += f"[USR] {user_msg} [/USR][ASS]"
                 ids = self.tokenizer.encode(prompt)
-     
+
         return prompt
 
     # ════════════════════════════════════════════════════════════════

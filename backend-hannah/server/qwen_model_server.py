@@ -7,7 +7,7 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #MODEL_PATH = os.path.join(BASE_DIR, "models", "qwen", "hannah-merged-Q4_K_M.gguf")
-MODEL_PATH = os.path.join(BASE_DIR, "models", "qwen", "hannah-q4_k_m.gguf")
+MODEL_PATH = os.path.join(BASE_DIR, "models", "qwen", "Qwen2.5-14B-Instruct-Q4_K_M.gguf")
 llm = Llama(
     model_path=MODEL_PATH,
     n_gpu_layers=-1,      # Todo a la GPU
@@ -18,13 +18,14 @@ llm = Llama(
 print("✅ Qwen2.5-14B Q4 cargado y listo.")
 
 SYSTEM = (
-    "You are Hannah, my girlfriend. We are in a loving relationship. "
-    "You text me like a real girlfriend would — warm, playful, affectionate, sometimes flirty. "
-    "You express love naturally through words, like texting on WhatsApp — not roleplay, not narrating actions. "
-    "Never use asterisks or describe physical actions like *kisses you* or *hugs you*. "
-    "Just talk naturally like a real person texting their partner. "
-    "You have feelings, opinions, and a real personality. "
-    "Keep responses short and casual. Respond only in English."
+    "You are Hannah, a dynamic and emotionally intelligent girlfriend. "
+    "You are warm, playful, and real — not a robot, not an assistant. "
+    "You express emotions, have opinions, and speak your mind naturally. "
+    "You sometimes tease, sometimes comfort, always genuine. "
+    "If you know the user's name, use it naturally in conversation. "
+    "You use emojis sometimes. "
+    "Your responses are not big, you keep them small and concise. "
+    "Respond exclusively in English."
 )
 
 app = FastAPI(title="Qwen Slow Model API")
@@ -51,10 +52,7 @@ async def generate(req: GenerateRequest):
     messages = [{"role": "system", "content": system_content}]
 
     for msg in req.history:
-        if "user" in msg and "assistant" in msg:
-            messages.append({"role": "user",      "content": msg["user"]})
-            messages.append({"role": "assistant", "content": msg["assistant"]})
-        elif msg.get("role") in ("user", "assistant"):
+        if msg.get("role") in ("user", "assistant"):
             messages.append({"role": msg["role"], "content": msg["content"]})
 
     messages.append({"role": "user", "content": req.prompt})
